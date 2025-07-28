@@ -4,8 +4,13 @@ export interface IUser extends Document {
   firstName: string;
   lastName: string;
   email: string;
-  birthDate: Date;
+  password: string;
+  birthDate?: Date;
   businesses: Types.ObjectId[];
+  role: 'admin' | 'client';
+  isVerified: boolean;
+  verificationToken?: string;
+  verificationTokenExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,12 +36,17 @@ const userSchema = new Schema<IUser>({
     trim: true,
     match: [/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, 'Please enter a valid email']
   },
+  password: {
+    type: String,
+    required: [true, 'Password is required'],
+    minlength: [6, 'Password must be at least 6 characters'],
+    select: false
+  },
   birthDate: {
     type: Date,
-    required: [true, 'Birth date is required'],
     validate: {
-      validator: function(date: Date) {
-        return date < new Date();
+      validator: function(date: Date | undefined) {
+        return !date || date < new Date();
       },
       message: 'Birth date must be before current date'
     }
@@ -44,7 +54,24 @@ const userSchema = new Schema<IUser>({
   businesses: [{
     type: Schema.Types.ObjectId,
     ref: 'Business'
-  }]
+  }],
+  role: {
+    type: String,
+    enum: ['admin', 'client'],
+    default: 'client'
+  },
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  verificationToken: {
+    type: String,
+    select: false
+  },
+  verificationTokenExpires: {
+    type: Date,
+    select: false
+  }
 }, {
   timestamps: true,
   versionKey: false,
@@ -55,6 +82,10 @@ userSchema.virtual('fullName').get(function() {
 });
 
 userSchema.virtual('age').get(function() {
+  if (!this.birthDate) {
+    return null;
+  }
+  
   const today = new Date();
   const birth = new Date(this.birthDate);
   let age = today.getFullYear() - birth.getFullYear();
