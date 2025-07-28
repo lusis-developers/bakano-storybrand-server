@@ -1,11 +1,7 @@
-import type { Request, Response, NextFunction } from 'express';
+import type { Response, NextFunction } from 'express';
 import { HttpStatusCode } from 'axios';
-import { Types } from 'mongoose';
-import models from '../models';
 import type { AuthRequest } from '../types/AuthRequest';
-import openaiService from '../services/openai.service';
-import geminiService from '../services/gemini.service';
-import { parseBrandScriptSections } from '../utils/brandscript-parser.util';
+import brandScriptService from '../services/brandscript.service';
 
 
 
@@ -14,72 +10,23 @@ import { parseBrandScriptSections } from '../utils/brandscript-parser.util';
  */
 export async function createBrandScriptController(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { businessId, answers, aiProvider = 'openai' } = req.body;
+    const { businessId, answers, aiProvider = 'gemini' } = req.body;
     const userId = req.user?.id;
 
-    // Validar que el negocio existe y pertenece al usuario
-    const business = await models.business.findOne({
-      _id: businessId,
-      owner: userId
-    });
-
-    if (!business) {
-      res.status(HttpStatusCode.NotFound).send({
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
         success: false,
-        message: 'Negocio no encontrado o no tienes permisos para acceder a él'
+        message: 'Usuario no autenticado'
       });
       return;
     }
 
-    // Validar respuestas requeridas
-    const requiredFields = [
-      'companyName', 'productsServices', 'targetAudience', 
-      'mainProblem', 'solution', 'uniqueCharacteristics', 
-      'authority', 'steps'
-    ];
-
-    for (const field of requiredFields) {
-      if (!answers[field] || answers[field].trim() === '') {
-        res.status(HttpStatusCode.BadRequest).send({
-          success: false,
-          message: `El campo '${field}' es requerido`
-        });
-        return;
-      }
-    }
-
-    // Generar BrandScript con IA
-    let generatedScript: string;
-    try {
-      if (aiProvider === 'gemini') {
-        generatedScript = await geminiService.generateBrandScript(answers);
-      } else {
-        generatedScript = await openaiService.generateBrandScript(answers);
-      }
-    } catch (error) {
-      console.error('Error generando BrandScript:', error);
-      res.status(HttpStatusCode.InternalServerError).send({
-        success: false,
-        message: 'Error al generar el BrandScript con IA'
-      });
-      return;
-    }
-
-    // Parsear el script generado en secciones estructuradas
-    const parsedScript = parseBrandScriptSections(generatedScript);
-
-    // Crear el BrandScript en la base de datos
-    const brandScript = new models.brandscript({
-      business: businessId,
+    const brandScript = await brandScriptService.createBrandScript({
+      businessId,
       answers,
-      generatedScript,
-      parsedScript,
       aiProvider,
-      status: 'completed'
+      userId
     });
-
-    await brandScript.save();
-    await brandScript.populate('business', 'name owner');
 
     res.status(HttpStatusCode.Created).send({
       success: true,
@@ -89,6 +36,23 @@ export async function createBrandScriptController(req: AuthRequest, res: Respons
 
   } catch (error) {
     console.error('Error en createBrandScriptController:', error);
+    
+    if (error instanceof Error && (error.message.includes('no encontrado') || error.message.includes('permisos'))) {
+      res.status(HttpStatusCode.NotFound).send({
+        success: false,
+        message: error.message
+      });
+      return;
+    }
+    
+    if (error instanceof Error && error.message.includes('requerido')) {
+      res.status(HttpStatusCode.BadRequest).send({
+        success: false,
+        message: error.message
+      });
+      return;
+    }
+    
     next(error);
   }
 }
@@ -101,97 +65,27 @@ export async function getBrandScriptsController(req: AuthRequest, res: Response,
     const userId = req.user?.id;
     const { page = 1, limit = 10, businessId, status } = req.query;
 
-    // Construir filtros
-    const matchStage: any = {
-      'business.owner': new Types.ObjectId(userId)
-    };
-
-    if (businessId) {
-      matchStage.business = new Types.ObjectId(businessId as string);
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        success: false,
+        message: 'Usuario no autenticado'
+      });
+      return;
     }
 
-    if (status) {
-      matchStage.status = status;
-    }
-
-    // Pipeline de agregación para obtener BrandScripts con información del negocio
-    const pipeline: any[] = [
-      {
-        $lookup: {
-          from: 'businesses',
-          localField: 'business',
-          foreignField: '_id',
-          as: 'business'
-        }
-      },
-      {
-        $unwind: '$business'
-      },
-      {
-        $match: matchStage
-      },
-      {
-        $sort: { createdAt: -1 }
-      },
-      {
-        $skip: (Number(page) - 1) * Number(limit)
-      },
-      {
-        $limit: Number(limit)
-      },
-      {
-        $project: {
-          'answers': 1,
-          'generatedScript': 1,
-          'aiProvider': 1,
-          'status': 1,
-          'version': 1,
-          'marketingAssets': 1,
-          'createdAt': 1,
-          'updatedAt': 1,
-          'business.name': 1,
-          'business._id': 1
-        }
-      }
-    ];
-
-    const brandScripts = await models.brandscript.aggregate(pipeline);
-
-    // Contar total para paginación
-    const totalPipeline: any[] = [
-      {
-        $lookup: {
-          from: 'businesses',
-          localField: 'business',
-          foreignField: '_id',
-          as: 'business'
-        }
-      },
-      {
-        $unwind: '$business'
-      },
-      {
-        $match: matchStage
-      },
-      {
-        $count: 'total'
-      }
-    ];
-
-    const totalResult = await models.brandscript.aggregate(totalPipeline);
-    const total = totalResult[0]?.total || 0;
+    const result = await brandScriptService.getBrandScriptsByUser(userId, {
+      page: Number(page),
+      limit: Number(limit),
+      businessId: businessId as string,
+      status: status as string
+    });
 
     res.status(HttpStatusCode.Ok).send({
       success: true,
       message: 'BrandScripts obtenidos exitosamente',
       data: {
-        brandScripts,
-        pagination: {
-          currentPage: Number(page),
-          totalPages: Math.ceil(total / Number(limit)),
-          totalItems: total,
-          itemsPerPage: Number(limit)
-        }
+        brandScripts: result.data,
+        pagination: result.pagination
       }
     });
 
@@ -209,20 +103,15 @@ export async function getBrandScriptByIdController(req: AuthRequest, res: Respon
     const { id } = req.params;
     const userId = req.user?.id;
 
-    const brandScript = await models.brandscript.findById(id)
-      .populate({
-        path: 'business',
-        select: 'name owner',
-        match: { owner: userId }
-      });
-
-    if (!brandScript || !brandScript.business) {
-      res.status(HttpStatusCode.NotFound).send({
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
         success: false,
-        message: 'BrandScript no encontrado o no tienes permisos para acceder a él'
+        message: 'Usuario no autenticado'
       });
       return;
     }
+
+    const brandScript = await brandScriptService.getBrandScriptById(id, userId);
 
     res.status(HttpStatusCode.Ok).send({
       success: true,
@@ -232,6 +121,15 @@ export async function getBrandScriptByIdController(req: AuthRequest, res: Respon
 
   } catch (error) {
     console.error('Error en getBrandScriptByIdController:', error);
+    
+    if (error instanceof Error && (error.message.includes('no encontrado') || error.message.includes('permisos'))) {
+      res.status(HttpStatusCode.NotFound).send({
+        success: false,
+        message: error.message
+      });
+      return;
+    }
+    
     next(error);
   }
 }
@@ -245,9 +143,16 @@ export async function generateMarketingContentController(req: AuthRequest, res: 
     const { contentType, aiProvider } = req.body;
     const userId = req.user?.id;
 
-    // Validar tipo de contenido
-    const validContentTypes = ['email', 'landing', 'social', 'elevator'];
-    if (!validContentTypes.includes(contentType)) {
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        success: false,
+        message: 'Usuario no autenticado'
+      });
+      return;
+    }
+
+    // Validar tipo de contenido usando el servicio
+    if (!brandScriptService.validateContentType(contentType)) {
       res.status(HttpStatusCode.BadRequest).send({
         success: false,
         message: 'Tipo de contenido inválido. Debe ser: email, landing, social, o elevator'
@@ -255,54 +160,18 @@ export async function generateMarketingContentController(req: AuthRequest, res: 
       return;
     }
 
-    // Obtener el BrandScript
-    const brandScript = await models.brandscript.findById(id)
-      .populate({
-        path: 'business',
-        select: 'name owner',
-        match: { owner: userId }
-      });
+    // Obtener el BrandScript usando el servicio
+    const brandScript = await brandScriptService.getBrandScriptById(id, userId);
 
-    if (!brandScript || !brandScript.business) {
-      res.status(HttpStatusCode.NotFound).send({
-        success: false,
-        message: 'BrandScript no encontrado o no tienes permisos para acceder a él'
-      });
-      return;
-    }
-
-    // Generar contenido con IA
-    let generatedContent: string;
-    try {
-      const provider = aiProvider || brandScript.aiProvider;
-      if (provider === 'gemini') {
-        generatedContent = await geminiService.generateMarketingContent(
-          brandScript.generatedScript,
-          contentType
-        );
-      } else {
-        generatedContent = await openaiService.generateMarketingContent(
-          brandScript.generatedScript,
-          contentType
-        );
-      }
-    } catch (error) {
-      console.error('Error generando contenido de marketing:', error);
-      res.status(HttpStatusCode.InternalServerError).send({
-        success: false,
-        message: 'Error al generar el contenido de marketing'
-      });
-      return;
-    }
-
-    // Actualizar el BrandScript con el nuevo contenido
-    const updateField = `marketingAssets.${contentType === 'landing' ? 'landingPage' : contentType === 'social' ? 'socialPosts' : contentType === 'elevator' ? 'elevatorPitch' : 'email'}`;
-    
-    await models.brandscript.findByIdAndUpdate(
-      id,
-      { $set: { [updateField]: generatedContent } },
-      { new: true }
+    // Generar contenido usando el servicio
+    const generatedContent = await brandScriptService.generateMarketingContent(
+      brandScript,
+      contentType,
+      aiProvider
     );
+
+    // Actualizar el BrandScript con el nuevo contenido usando el servicio
+    await brandScriptService.updateMarketingContent(id, contentType, generatedContent);
 
     res.status(HttpStatusCode.Ok).send({
       success: true,
@@ -315,6 +184,23 @@ export async function generateMarketingContentController(req: AuthRequest, res: 
 
   } catch (error) {
     console.error('Error en generateMarketingContentController:', error);
+    
+    if (error instanceof Error && (error.message.includes('no encontrado') || error.message.includes('permisos'))) {
+      res.status(HttpStatusCode.NotFound).send({
+        success: false,
+        message: error.message
+      });
+      return;
+    }
+    
+    if (error instanceof Error && (error.message.includes('requerido') || error.message.includes('inválido'))) {
+      res.status(HttpStatusCode.BadRequest).send({
+        success: false,
+        message: error.message
+      });
+      return;
+    }
+    
     next(error);
   }
 }
@@ -328,51 +214,22 @@ export async function analyzeBrandScriptController(req: AuthRequest, res: Respon
     const { aiProvider } = req.body;
     const userId = req.user?.id;
 
-    // Obtener el BrandScript
-    const brandScript = await models.brandscript.findById(id)
-      .populate({
-        path: 'business',
-        select: 'name owner',
-        match: { owner: userId }
-      });
-
-    if (!brandScript || !brandScript.business) {
-      res.status(HttpStatusCode.NotFound).send({
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
         success: false,
-        message: 'BrandScript no encontrado o no tienes permisos para acceder a él'
+        message: 'Usuario no autenticado'
       });
       return;
     }
 
-    // Generar análisis con IA (solo disponible con Gemini por ahora)
-    let analysis: string;
-    try {
-      const provider = aiProvider || 'gemini';
-      if (provider === 'gemini') {
-        analysis = await geminiService.analyzeBrandScript(brandScript.generatedScript);
-      } else {
-        // Para OpenAI, podríamos implementar una función similar
-        res.status(HttpStatusCode.BadRequest).send({
-          success: false,
-          message: 'El análisis de BrandScript solo está disponible con Gemini por ahora'
-        });
-        return;
-      }
-    } catch (error) {
-      console.error('Error analizando BrandScript:', error);
-      res.status(HttpStatusCode.InternalServerError).send({
-        success: false,
-        message: 'Error al analizar el BrandScript'
-      });
-      return;
-    }
+    // Obtener el BrandScript usando el servicio
+    const brandScript = await brandScriptService.getBrandScriptById(id, userId);
 
-    // Guardar el análisis
-    await models.brandscript.findByIdAndUpdate(
-      id,
-      { $set: { analysis } },
-      { new: true }
-    );
+    // Analizar con IA usando el servicio
+    const analysis = await brandScriptService.analyzeBrandScript(brandScript, aiProvider);
+
+    // Guardar el análisis usando el servicio
+    await brandScriptService.saveAnalysis(id, analysis);
 
     res.status(HttpStatusCode.Ok).send({
       success: true,
@@ -384,6 +241,23 @@ export async function analyzeBrandScriptController(req: AuthRequest, res: Respon
 
   } catch (error) {
     console.error('Error en analyzeBrandScriptController:', error);
+    
+    if (error instanceof Error && (error.message.includes('no encontrado') || error.message.includes('permisos'))) {
+      res.status(HttpStatusCode.NotFound).send({
+        success: false,
+        message: error.message
+      });
+      return;
+    }
+    
+    if (error instanceof Error && error.message.includes('solo está disponible')) {
+      res.status(HttpStatusCode.BadRequest).send({
+        success: false,
+        message: error.message
+      });
+      return;
+    }
+    
     next(error);
   }
 }
@@ -397,9 +271,16 @@ export async function updateBrandScriptStatusController(req: AuthRequest, res: R
     const { status } = req.body;
     const userId = req.user?.id;
 
-    // Validar estado
-    const validStatuses = ['draft', 'completed', 'archived'];
-    if (!validStatuses.includes(status)) {
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        success: false,
+        message: 'Usuario no autenticado'
+      });
+      return;
+    }
+
+    // Validar estado usando el servicio
+    if (!brandScriptService.validateStatus(status)) {
       res.status(HttpStatusCode.BadRequest).send({
         success: false,
         message: 'Estado inválido. Debe ser: draft, completed, o archived'
@@ -407,25 +288,8 @@ export async function updateBrandScriptStatusController(req: AuthRequest, res: R
       return;
     }
 
-    // Verificar permisos y actualizar
-    const brandScript = await models.brandscript.findOneAndUpdate(
-      {
-        _id: id,
-        business: {
-          $in: await models.business.find({ owner: userId }).distinct('_id')
-        }
-      },
-      { status },
-      { new: true }
-    ).populate('business', 'name owner');
-
-    if (!brandScript) {
-      res.status(HttpStatusCode.NotFound).send({
-        success: false,
-        message: 'BrandScript no encontrado o no tienes permisos para modificarlo'
-      });
-      return;
-    }
+    // Actualizar el estado usando el servicio
+    const brandScript = await brandScriptService.updateStatus(id, status, userId);
 
     res.status(HttpStatusCode.Ok).send({
       success: true,
@@ -435,6 +299,15 @@ export async function updateBrandScriptStatusController(req: AuthRequest, res: R
 
   } catch (error) {
     console.error('Error en updateBrandScriptStatusController:', error);
+    
+    if (error instanceof Error && (error.message.includes('no encontrado') || error.message.includes('permisos'))) {
+      res.status(HttpStatusCode.NotFound).send({
+        success: false,
+        message: error.message
+      });
+      return;
+    }
+    
     next(error);
   }
 }
@@ -447,21 +320,16 @@ export async function deleteBrandScriptController(req: AuthRequest, res: Respons
     const { id } = req.params;
     const userId = req.user?.id;
 
-    // Verificar permisos y eliminar
-    const brandScript = await models.brandscript.findOneAndDelete({
-      _id: id,
-      business: {
-        $in: await models.business.find({ owner: userId }).distinct('_id')
-      }
-    });
-
-    if (!brandScript) {
-      res.status(HttpStatusCode.NotFound).send({
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
         success: false,
-        message: 'BrandScript no encontrado o no tienes permisos para eliminarlo'
+        message: 'Usuario no autenticado'
       });
       return;
     }
+
+    // Eliminar el BrandScript usando el servicio
+    await brandScriptService.deleteBrandScript(id, userId);
 
     res.status(HttpStatusCode.Ok).send({
       success: true,
@@ -470,6 +338,15 @@ export async function deleteBrandScriptController(req: AuthRequest, res: Respons
 
   } catch (error) {
     console.error('Error en deleteBrandScriptController:', error);
+    
+    if (error instanceof Error && (error.message.includes('no encontrado') || error.message.includes('permisos'))) {
+      res.status(HttpStatusCode.NotFound).send({
+        success: false,
+        message: error.message
+      });
+      return;
+    }
+    
     next(error);
   }
 }
