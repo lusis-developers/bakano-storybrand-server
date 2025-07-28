@@ -122,8 +122,8 @@ export async function getUsersController(req: Request, res: Response, next: Next
     const skip = (pageNumber - 1) * limitNumber;
     
     const users = await models.user.find()
-      .populate('businesses')
       .select('-password')
+      .populate('businesses')
       .skip(skip)
       .limit(limitNumber)
       .sort({ createdAt: -1 });
@@ -168,8 +168,8 @@ export async function getUserByIdController(req: Request, res: Response, next: N
     }
 
     const user = await models.user.findById(id)
-      .populate('businesses')
-      .select('-password');
+      .select('-password')
+      .populate('businesses');
     
     if (!user) {
       res.status(HttpStatusCode.NotFound).send({ 
