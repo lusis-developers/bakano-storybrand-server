@@ -139,7 +139,7 @@ ${brandScript}
 
   private buildBrandScriptPrompt(answers: any): string {
     return `
-Crea un BrandScript completo y profesional en español siguiendo el framework de StoryBrand para la siguiente empresa:
+Crea un BrandScript siguiendo el framework de StoryBrand para la siguiente empresa.
 
 **INFORMACIÓN DE LA EMPRESA:**
 - Nombre: ${answers.companyName}
@@ -151,18 +151,30 @@ Crea un BrandScript completo y profesional en español siguiendo el framework de
 - Autoridad/Credenciales: ${answers.authority}
 - Pasos para comprar/usar: ${answers.steps}
 
-**ESTRUCTURA REQUERIDA:**
+**INSTRUCCIONES IMPORTANTES:**
+1. Responde ÚNICAMENTE con un JSON válido
+2. NO incluyas texto adicional, explicaciones o markdown
+3. El JSON debe tener exactamente estos campos:
 
-1. **EL PERSONAJE (CLIENTE)**: Define claramente quién es el cliente ideal
-2. **TIENE UN PROBLEMA**: Describe el problema externo, interno y filosófico
-3. **Y SE ENCUENTRA CON UNA GUÍA**: Posiciona a la empresa como la guía experta
-4. **QUE LE DA UN PLAN**: Presenta un plan claro de 3 pasos
-5. **Y LO LLAMA A LA ACCIÓN**: Define llamadas a acción directas y de transición
-6. **QUE TERMINA EN ÉXITO**: Describe la transformación positiva
-7. **Y LE AYUDA A EVITAR EL FRACASO**: Muestra las consecuencias de no actuar
+**FORMATO DE SALIDA (JSON):**
+{
+  "controllingIdea": "Una frase que resuma la propuesta de valor única",
+  "characterWhatTheyWant": "Lo que quiere el cliente ideal",
+  "problemExternal": "El problema externo que enfrentan",
+  "problemInternal": "Cómo se sienten por dentro debido al problema",
+  "problemPhilosophical": "Por qué está mal que tengan este problema",
+  "guideEmpathy": "Cómo la empresa entiende su dolor",
+  "guideCompetencyAndAuthority": "Por qué la empresa es la mejor opción",
+  "planProcessSteps": ["Paso 1", "Paso 2", "Paso 3"],
+  "callToActionDirect": "Llamada a acción principal",
+  "callToActionTransitional": "Llamada a acción suave",
+  "successResults": "Qué lograrán si actúan",
+  "failureResults": "Qué pasará si no actúan",
+  "transformationFrom": "De qué se transformarán",
+  "transformationTo": "En qué se convertirán"
+}
 
-**FORMATO DE SALIDA:**
-Genera un BrandScript estructurado, claro y persuasivo que pueda usarse inmediatamente para crear contenido de marketing efectivo. Incluye ejemplos específicos de copy para cada sección.
+Responde SOLO con el JSON, sin texto adicional.
 `;
   }
 }

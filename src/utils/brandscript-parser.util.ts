@@ -3,6 +3,32 @@
  * Basado en el framework StoryBrand de 7 secciones
  */
 
+// Interface para los campos aplanados
+export interface FlattenedBrandScriptFields {
+  characterWhatTheyWant: string;
+  characterExternal: string;
+  characterInternal: string;
+  characterPhilosophical: string;
+  problemExternal: string;
+  problemInternal: string;
+  problemPhilosophical: string;
+  guideEmpathy: string;
+  guideCompetencyAndAuthority: string;
+  planProcessSteps: string[];
+  callToActionDirect: string;
+  callToActionTransitional: string;
+  successResults: string;
+  failureResults: string;
+  transformationFrom: string;
+  transformationTo: string;
+}
+
+// Interface para el resultado completo del parsing
+export interface ParsedBrandScriptResult {
+  sections: BrandScriptSections;
+  flattenedFields: FlattenedBrandScriptFields;
+}
+
 export interface BrandScriptSections {
   character: {
     title: string;
@@ -71,9 +97,43 @@ export interface BrandScriptSections {
 }
 
 /**
- * Función principal para parsear el BrandScript en secciones estructuradas
+ * Función principal para parsear el BrandScript en secciones estructuradas y campos aplanados
  * @param generatedScript - El script generado por IA
- * @returns Objeto con las 7 secciones del framework StoryBrand
+ * @returns Las secciones parseadas y los campos aplanados del BrandScript
+ */
+export function parseBrandScriptComplete(generatedScript: string): ParsedBrandScriptResult {
+  const sections = parseBrandScriptSections(generatedScript);
+  
+  // Crear campos aplanados desde las secciones
+  const flattenedFields: FlattenedBrandScriptFields = {
+    characterWhatTheyWant: sections.character.content.whatTheyWant,
+    characterExternal: sections.character.content.external,
+    characterInternal: sections.character.content.internal,
+    characterPhilosophical: sections.character.content.philosophical,
+    problemExternal: sections.problem.content.external,
+    problemInternal: sections.problem.content.internal,
+    problemPhilosophical: sections.problem.content.philosophical,
+    guideEmpathy: sections.guide.content.empathy,
+    guideCompetencyAndAuthority: sections.guide.content.competencyAndAuthority,
+    planProcessSteps: sections.plan.content.processSteps,
+    callToActionDirect: sections.callToAction.content.direct,
+    callToActionTransitional: sections.callToAction.content.transitional,
+    successResults: sections.success.content.successfulResults,
+    failureResults: sections.failure.content.tragicResults,
+    transformationFrom: sections.transformation.content.from,
+    transformationTo: sections.transformation.content.to
+  };
+  
+  return {
+    sections,
+    flattenedFields
+  };
+}
+
+/**
+ * Función para parsear el BrandScript en secciones estructuradas (mantiene compatibilidad)
+ * @param generatedScript - El script generado por IA
+ * @returns Las secciones parseadas del BrandScript
  */
 export function parseBrandScriptSections(generatedScript: string): BrandScriptSections {
   const sections: BrandScriptSections = {
