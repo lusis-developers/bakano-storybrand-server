@@ -16,6 +16,7 @@ export interface IBusiness extends Document {
   };
   owner: Types.ObjectId;
   employees?: Types.ObjectId[];
+  integrations?: Types.ObjectId[];
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -90,6 +91,10 @@ const businessSchema = new Schema<IBusiness>({
     type: Schema.Types.ObjectId,
     ref: 'User'
   }],
+  integrations: [{
+    type: Schema.Types.ObjectId,
+    ref: 'Integration'
+  }],
   isActive: {
     type: Boolean,
     default: true
@@ -107,6 +112,11 @@ businessSchema.index({ isActive: 1 });
 // Virtual para obtener el número de empleados
 businessSchema.virtual('employeeCount').get(function() {
   return this.employees ? this.employees.length : 0;
+});
+
+// Virtual para obtener el número de integraciones
+businessSchema.virtual('integrationCount').get(function() {
+  return this.integrations ? this.integrations.length : 0;
 });
 
 businessSchema.set('toJSON', { virtuals: true });
