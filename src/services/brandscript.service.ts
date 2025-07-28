@@ -86,12 +86,30 @@ class BrandScriptService {
   }
 
   /**
-   * Generar BrandScript usando IA
+   * Obtener contexto de onboarding para personalizar el prompt
    */
-  async generateBrandScriptWithAI(answers: BrandScriptAnswers, aiProvider: 'gemini' | 'openai' = 'gemini') {
+  async getOnboardingContext(businessId: string) {
     try {
+      const onboardingContext = await models.onboardingContext.findOne({
+        business: businessId
+      });
+      return onboardingContext;
+    } catch (error) {
+      console.error('Error obteniendo contexto de onboarding:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Generar BrandScript usando IA con contexto de onboarding
+   */
+  async generateBrandScriptWithAI(answers: BrandScriptAnswers, businessId: string, aiProvider: 'gemini' | 'openai' = 'gemini') {
+    try {
+      // Obtener contexto de onboarding para personalizar el prompt
+      const onboardingContext = await this.getOnboardingContext(businessId);
+      
       if (aiProvider === 'gemini') {
-        const generatedJson = await geminiService.generateBrandScript(answers);
+        const generatedJson = await geminiService.generateBrandScript(answers, onboardingContext);
         // Limpiar la respuesta de Gemini (remover bloques de código markdown)
         const cleanedJson = generatedJson
           .replace(/```json\s*/g, '')
@@ -119,7 +137,7 @@ class BrandScriptService {
     this.validateRequiredAnswers(answers);
 
     // Generar BrandScript con IA
-    const brandScriptData = await this.generateBrandScriptWithAI(answers, aiProvider);
+    const brandScriptData = await this.generateBrandScriptWithAI(answers, businessId, aiProvider);
 
     // Crear el BrandScript en la base de datos
     const brandScript = new models.brandscript({

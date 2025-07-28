@@ -25,8 +25,8 @@ export class GeminiService {
     uniqueCharacteristics: string;
     authority: string;
     steps: string;
-  }): Promise<string> {
-    const prompt = this.buildBrandScriptPrompt(answers);
+  }, onboardingContext?: any): Promise<string> {
+    const prompt = this.buildBrandScriptPrompt(answers, onboardingContext);
 
     try {
       const result = await this.model.generateContent({
@@ -137,7 +137,18 @@ ${brandScript}
     }
   }
 
-  private buildBrandScriptPrompt(answers: any): string {
+  private buildBrandScriptPrompt(answers: any, onboardingContext?: any): string {
+    let contextSection = '';
+    
+    if (onboardingContext && onboardingContext.isComplete) {
+      contextSection = `
+**CONTEXTO DEL USUARIO:**
+${onboardingContext.generateAIPrompt()}
+
+Usa este contexto para personalizar el BrandScript según el perfil, objetivos y canales de marketing del usuario.
+`;
+    }
+    
     return `
 Crea un BrandScript siguiendo el framework de StoryBrand para la siguiente empresa.
 
@@ -149,7 +160,7 @@ Crea un BrandScript siguiendo el framework de StoryBrand para la siguiente empre
 - Solución: ${answers.solution}
 - Características únicas: ${answers.uniqueCharacteristics}
 - Autoridad/Credenciales: ${answers.authority}
-- Pasos para comprar/usar: ${answers.steps}
+- Pasos para comprar/usar: ${answers.steps}${contextSection}
 
 **INSTRUCCIONES IMPORTANTES:**
 1. Responde ÚNICAMENTE con un JSON válido
