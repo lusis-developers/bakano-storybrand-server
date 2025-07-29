@@ -6,7 +6,8 @@ import {
   generateMarketingContentController,
   analyzeBrandScriptController,
   updateBrandScriptStatusController,
-  deleteBrandScriptController
+  deleteBrandScriptController,
+  getBrandScriptCampaignReadiness
 } from '../controllers/brandscript.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 
@@ -93,5 +94,12 @@ router.patch('/:id/status', updateBrandScriptStatusController);
  * @access Private
  */
 router.delete('/:id', deleteBrandScriptController);
+
+/**
+ * @route GET /api/brandscripts/:id/campaign-readiness
+ * @desc Check if BrandScript is ready for campaign creation
+ * @access Private
+ */
+router.get('/:id/campaign-readiness', getBrandScriptCampaignReadiness);
 
 export default router;

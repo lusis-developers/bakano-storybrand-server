@@ -4,6 +4,7 @@ import user from './user.route'
 import business from './business.route'
 import brandscript from './brandscript.route'
 import onboarding from './onboarding.route'
+import campaign from './campaign.router'
 
 function routerApi(app: Application) {
   const router = express.Router();
@@ -15,6 +16,7 @@ function routerApi(app: Application) {
   router.use("/business", business);
   router.use("/brandscripts", brandscript);
   router.use("/onboarding", onboarding);
+  router.use("/campaigns", campaign);
 }
 
 export default routerApi;

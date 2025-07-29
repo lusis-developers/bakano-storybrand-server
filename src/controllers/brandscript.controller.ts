@@ -1,7 +1,9 @@
 import type { Response, NextFunction } from 'express';
 import { HttpStatusCode } from 'axios';
+import { Types } from 'mongoose';
 import type { AuthRequest } from '../types/AuthRequest';
 import brandScriptService from '../services/brandscript.service';
+import models from '../models';
 
 
 
@@ -90,7 +92,96 @@ export async function getBrandScriptsController(req: AuthRequest, res: Response,
     });
 
   } catch (error) {
-    console.error('Error en getBrandScriptsController:', error);
+    console.error('Error en deleteBrandScriptController:', error);
+    next(error);
+  }
+}
+
+/**
+ * Get BrandScript completion status and campaign readiness
+ */
+export async function getBrandScriptCampaignReadiness(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { brandScriptId } = req.params;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        success: false,
+        message: 'User not authenticated'
+      });
+      return;
+    }
+
+    if (!Types.ObjectId.isValid(brandScriptId)) {
+      res.status(HttpStatusCode.BadRequest).send({
+        success: false,
+        message: 'Invalid BrandScript ID'
+      });
+      return;
+    }
+
+    // Get BrandScript with business ownership validation
+    const brandScript = await models.brandscript.findById(brandScriptId)
+      .populate({
+        path: 'business',
+        select: 'name industry owner',
+        match: { owner: userId }
+      });
+
+    if (!brandScript || !brandScript.business) {
+      res.status(HttpStatusCode.NotFound).send({
+        success: false,
+        message: 'BrandScript not found or you do not have permission to access it'
+      });
+      return;
+    }
+
+    // Check if BrandScript is completed
+    const isCompleted = brandScript.status === 'completed';
+    const hasRequiredFields = !!
+      brandScript.controllingIdea &&
+      brandScript.characterWhatTheyWant &&
+      brandScript.problemExternal &&
+      brandScript.guideEmpathy &&
+      brandScript.planProcessSteps?.length > 0 &&
+      brandScript.callToActionDirect &&
+      brandScript.successResults;
+
+    const canCreateCampaign = isCompleted && hasRequiredFields;
+
+    // Get existing campaigns for this BrandScript
+    const existingCampaigns = await models.campaign.find({
+      brandScript: brandScriptId
+    }).select('title status createdAt').sort({ createdAt: -1 });
+
+    res.status(HttpStatusCode.Ok).send({
+      success: true,
+      message: 'BrandScript campaign readiness retrieved successfully.',
+      data: {
+        brandScript: {
+          id: brandScript._id,
+          controllingIdea: brandScript.controllingIdea,
+          status: brandScript.status,
+          isCompleted,
+          hasRequiredFields,
+          canCreateCampaign
+        },
+        business: {
+          id: brandScript.business._id,
+          name: (brandScript.business as any).name,
+          industry: (brandScript.business as any).industry
+        },
+        existingCampaigns,
+        nextSteps: canCreateCampaign 
+          ? 'You can now create a campaign to generate marketing assets based on this BrandScript.'
+          : 'Complete the BrandScript first to unlock campaign creation.'
+      }
+    });
+    return;
+
+  } catch (error) {
+    console.error('Error getting BrandScript campaign readiness:', error);
     next(error);
   }
 }
