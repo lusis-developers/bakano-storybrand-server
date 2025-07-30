@@ -1,22 +1,19 @@
 import express, { Application } from "express";
-import auth from './auth.route'
-import user from './user.route'
-import business from './business.route'
-import brandscript from './brandscript.route'
-import onboarding from './onboarding.route'
-import campaign from './campaign.router'
+import authRouter from './auth.route';
+import userRouter from './user.route';
+import businessRouter from './business.route';
+import brandscriptRouter from './brandscript.route';
+import contentRouter from './content.route';
 
 function routerApi(app: Application) {
   const router = express.Router();
-
   app.use("/api", router);
 
-  router.use("/auth", auth);
-  router.use("/users", user);
-  router.use("/business", business);
-  router.use("/brandscripts", brandscript);
-  router.use("/onboarding", onboarding);
-  router.use("/campaigns", campaign);
+  router.use("/auth", authRouter);
+  router.use("/users", userRouter);
+  router.use("/business", businessRouter);
+  router.use("/brandscripts", brandscriptRouter);
+  router.use("/content", contentRouter);
 }
 
 export default routerApi;
