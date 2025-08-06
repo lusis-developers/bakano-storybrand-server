@@ -1,5 +1,7 @@
 import { Schema, model, Document, Types } from 'mongoose';
 
+
+
 export interface IUser extends Document {
   firstName: string;
   lastName: string;
@@ -11,6 +13,7 @@ export interface IUser extends Document {
   isVerified: boolean;
   verificationToken?: string;
   verificationTokenExpires?: Date;
+  onboarding?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,6 +74,10 @@ const userSchema = new Schema<IUser>({
   verificationTokenExpires: {
     type: Date,
     select: false
+  },
+  onboarding: {
+    type: Schema.Types.ObjectId,
+    ref: 'Onboarding'
   }
 }, {
   timestamps: true,
@@ -97,6 +104,8 @@ userSchema.virtual('age').get(function() {
   
   return age;
 });
+
+
 
 userSchema.set('toJSON', { virtuals: true });
 userSchema.set('toObject', { virtuals: true });
