@@ -52,7 +52,6 @@ export interface IOnboardingPreferences {
 // Main Onboarding interface
 export interface IOnboarding extends Document {
   user: Types.ObjectId;
-  business: Types.ObjectId;
   userProfile: IUserProfile;
   businessContext: IBusinessContext;
   preferences: IOnboardingPreferences;
@@ -230,12 +229,7 @@ const onboardingSchema = new Schema<IOnboarding>({
     type: Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    index: true
-  },
-  business: {
-    type: Schema.Types.ObjectId,
-    ref: 'Business',
-    required: true,
+    unique: true,
     index: true
   },
   userProfile: {
@@ -273,7 +267,6 @@ const onboardingSchema = new Schema<IOnboarding>({
 });
 
 // Indexes
-onboardingSchema.index({ user: 1, business: 1 }, { unique: true });
 onboardingSchema.index({ completionPercentage: 1 });
 onboardingSchema.index({ 'preferences.onboardingCompleted': 1 });
 
