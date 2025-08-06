@@ -3,8 +3,6 @@ import { Types } from 'mongoose';
 import models from '../models';
 import { HttpStatusCode } from 'axios';
 import type { IUserProfile, IBusinessContext, IOnboardingPreferences } from '../models/onboarding.model';
-
-// Extend Request interface to include user
 interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
@@ -12,11 +10,8 @@ interface AuthenticatedRequest extends Request {
     role: string; 
   };
 }
-
-// Extended Request interfaces for type safety
 interface CreateOnboardingRequest extends Request {
   body: {
-    businessId: string;
     userProfile: IUserProfile;
     businessContext: IBusinessContext;
     preferences?: Partial<IOnboardingPreferences>;
@@ -32,31 +27,16 @@ interface UpdateOnboardingRequest extends Request {
   };
 }
 
-interface GetOnboardingRequest extends Request {
-  params: {
-    businessId: string;
-  };
-}
-
 /**
- * Create a new onboarding process for a user and business
+ * Create or update user onboarding information
  */
 export async function createOnboarding(req: CreateOnboardingRequest & AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { businessId, userProfile, businessContext, preferences } = req.body;
+    const { userProfile, businessContext, preferences } = req.body;
     const userId = req.user?.id;
-
-    // Validate required fields
     if (!userId) {
       res.status(HttpStatusCode.Unauthorized).send({
         message: "User authentication required."
-      });
-      return;
-    }
-
-    if (!businessId || !Types.ObjectId.isValid(businessId)) {
-      res.status(HttpStatusCode.BadRequest).send({
-        message: "Valid business ID is required."
       });
       return;
     }
@@ -67,60 +47,50 @@ export async function createOnboarding(req: CreateOnboardingRequest & Authentica
       });
       return;
     }
-
-    // Verify business exists and user has access
-    const business = await models.business.findOne({
-      _id: businessId,
-      $or: [
-        { owner: userId },
-        { employees: userId }
-      ]
-    });
-
-    if (!business) {
+    const user = await models.user.findById(userId);
+    if (!user) {
       res.status(HttpStatusCode.NotFound).send({
-        message: "Business not found or access denied."
+        message: "User not found."
       });
       return;
     }
-
-    // Check if onboarding already exists
-    const existingOnboarding = await models.onboarding.findOne({
-      user: userId,
-      business: businessId
-    });
-
+    const existingOnboarding = await models.onboarding.findOne({ user: userId });
     if (existingOnboarding) {
       res.status(HttpStatusCode.Conflict).send({
-        message: "Onboarding already exists for this user and business.",
-        onboarding: existingOnboarding
+        message: "Onboarding already exists for this user."
       });
       return;
     }
-
-    // Create new onboarding
-    const onboarding = new models.onboarding({
+    const onboardingData = {
       user: userId,
-      business: businessId,
       userProfile,
       businessContext,
-      preferences: {
-        ...preferences,
+      preferences: preferences || {
+        communicationFrequency: 'weekly',
+        preferredContentTypes: [],
+        aiProviderPreference: 'no_preference',
+        notificationSettings: {
+          email: true,
+          inApp: true,
+          contentGenerated: true,
+          weeklyReports: true,
+          systemUpdates: false
+        },
+        onboardingCompleted: false,
         completedSteps: ['user_profile', 'business_context']
       }
-    });
+    };
 
+    const onboarding = new models.onboarding(onboardingData);
     await onboarding.save();
-
-    // Populate references
-    await onboarding.populate([
-      { path: 'user', select: 'firstName lastName email' },
-      { path: 'business', select: 'name industry' }
-    ]);
+    user.onboarding = onboarding._id as Types.ObjectId;
+    await user.save();
 
     res.status(HttpStatusCode.Created).send({
       message: "Onboarding created successfully.",
-      onboarding
+      onboarding,
+      nextStep: onboarding.getNextStep(),
+      isComplete: onboarding.isComplete()
     });
     return;
 
@@ -131,11 +101,10 @@ export async function createOnboarding(req: CreateOnboardingRequest & Authentica
 }
 
 /**
- * Get onboarding information for a specific business
+ * Get user onboarding information
  */
-export async function getOnboarding(req: GetOnboardingRequest & AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+export async function getOnboarding(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { businessId } = req.params;
     const userId = req.user?.id;
 
     if (!userId) {
@@ -144,23 +113,7 @@ export async function getOnboarding(req: GetOnboardingRequest & AuthenticatedReq
       });
       return;
     }
-
-    if (!Types.ObjectId.isValid(businessId)) {
-      res.status(HttpStatusCode.BadRequest).send({
-        message: "Valid business ID is required."
-      });
-      return;
-    }
-
-    // Find onboarding with populated references
-    const onboarding = await models.onboarding.findOne({
-      user: userId,
-      business: businessId
-    }).populate([
-      { path: 'user', select: 'firstName lastName email' },
-      { path: 'business', select: 'name industry website' }
-    ]);
-
+    const onboarding = await models.onboarding.findOne({ user: userId });
     if (!onboarding) {
       res.status(HttpStatusCode.NotFound).send({
         message: "Onboarding not found."
@@ -183,11 +136,10 @@ export async function getOnboarding(req: GetOnboardingRequest & AuthenticatedReq
 }
 
 /**
- * Update onboarding information
+ * Update user onboarding information
  */
 export async function updateOnboarding(req: UpdateOnboardingRequest & AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { businessId } = req.params as { businessId: string };
     const { userProfile, businessContext, preferences, completedStep } = req.body;
     const userId = req.user?.id;
 
@@ -197,28 +149,13 @@ export async function updateOnboarding(req: UpdateOnboardingRequest & Authentica
       });
       return;
     }
-
-    if (!Types.ObjectId.isValid(businessId)) {
-      res.status(HttpStatusCode.BadRequest).send({
-        message: "Valid business ID is required."
-      });
-      return;
-    }
-
-    // Find existing onboarding
-    const onboarding = await models.onboarding.findOne({
-      user: userId,
-      business: businessId
-    });
-
+    const onboarding = await models.onboarding.findOne({ user: userId });
     if (!onboarding) {
       res.status(HttpStatusCode.NotFound).send({
-        message: "Onboarding not found."
+        message: "Onboarding not found. Please create onboarding first."
       });
       return;
     }
-
-    // Update fields if provided
     if (userProfile) {
       onboarding.userProfile = { ...onboarding.userProfile, ...userProfile };
     }
@@ -230,23 +167,17 @@ export async function updateOnboarding(req: UpdateOnboardingRequest & Authentica
     if (preferences) {
       onboarding.preferences = { ...onboarding.preferences, ...preferences };
     }
-
-    // Add completed step if provided
     if (completedStep) {
-      const completedSteps = onboarding.preferences.completedSteps || [];
+      const completedSteps = onboarding.preferences?.completedSteps || [];
       if (!completedSteps.includes(completedStep)) {
         completedSteps.push(completedStep);
-        onboarding.preferences.completedSteps = completedSteps;
+        if (onboarding.preferences) {
+          onboarding.preferences.completedSteps = completedSteps;
+        }
       }
     }
 
     await onboarding.save();
-
-    // Populate references
-    await onboarding.populate([
-      { path: 'user', select: 'firstName lastName email' },
-      { path: 'business', select: 'name industry' }
-    ]);
 
     res.status(HttpStatusCode.Ok).send({
       message: "Onboarding updated successfully.",
@@ -263,63 +194,16 @@ export async function updateOnboarding(req: UpdateOnboardingRequest & Authentica
 }
 
 /**
- * Get all onboardings for the authenticated user
- */
-export async function getUserOnboardings(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const userId = req.user?.id;
-
-    if (!userId) {
-      res.status(HttpStatusCode.Unauthorized).send({
-        message: "User authentication required."
-      });
-      return;
-    }
-
-    const onboardings = await models.onboarding.find({
-      user: userId
-    }).populate([
-      { path: 'business', select: 'name industry website isActive' }
-    ]).sort({ lastUpdated: -1 });
-
-    const onboardingsWithStatus = onboardings.map(onboarding => ({
-      ...onboarding.toObject(),
-      nextStep: onboarding.getNextStep(),
-      isComplete: onboarding.isComplete()
-    }));
-
-    res.status(HttpStatusCode.Ok).send({
-      message: "User onboardings retrieved successfully.",
-      onboardings: onboardingsWithStatus,
-      total: onboardings.length
-    });
-    return;
-
-  } catch (error) {
-    console.error('Error retrieving user onboardings:', error);
-    next(error);
-  }
-}
-
-/**
  * Mark onboarding step as completed
  */
 export async function completeOnboardingStep(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { businessId } = req.params as { businessId: string };
     const { step } = req.body as { step: 'user_profile' | 'business_context' | 'preferences' | 'first_content' };
     const userId = req.user?.id;
 
     if (!userId) {
       res.status(HttpStatusCode.Unauthorized).send({
         message: "User authentication required."
-      });
-      return;
-    }
-
-    if (!Types.ObjectId.isValid(businessId)) {
-      res.status(HttpStatusCode.BadRequest).send({
-        message: "Valid business ID is required."
       });
       return;
     }
@@ -338,24 +222,20 @@ export async function completeOnboardingStep(req: AuthenticatedRequest, res: Res
       });
       return;
     }
-
-    // Find and update onboarding
-    const onboarding = await models.onboarding.findOne({
-      user: userId,
-      business: businessId
-    });
-
+    const onboarding = await models.onboarding.findOne({ user: userId });
     if (!onboarding) {
       res.status(HttpStatusCode.NotFound).send({
-        message: "Onboarding not found."
+        message: "Onboarding not found. Please create onboarding first."
       });
       return;
     }
 
-    const completedSteps = onboarding.preferences.completedSteps || [];
+    const completedSteps = onboarding.preferences?.completedSteps || [];
     if (!completedSteps.includes(step)) {
       completedSteps.push(step);
-      onboarding.preferences.completedSteps = completedSteps;
+      if (onboarding.preferences) {
+        onboarding.preferences.completedSteps = completedSteps;
+      }
       await onboarding.save();
     }
 
@@ -374,11 +254,10 @@ export async function completeOnboardingStep(req: AuthenticatedRequest, res: Res
 }
 
 /**
- * Delete onboarding (reset process)
+ * Delete user onboarding (reset process)
  */
 export async function deleteOnboarding(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { businessId } = req.params as { businessId: string };
     const userId = req.user?.id;
 
     if (!userId) {
@@ -387,25 +266,14 @@ export async function deleteOnboarding(req: AuthenticatedRequest, res: Response,
       });
       return;
     }
-
-    if (!Types.ObjectId.isValid(businessId)) {
-      res.status(HttpStatusCode.BadRequest).send({
-        message: "Valid business ID is required."
-      });
-      return;
-    }
-
-    const result = await models.onboarding.deleteOne({
-      user: userId,
-      business: businessId
-    });
-
-    if (result.deletedCount === 0) {
+    const onboarding = await models.onboarding.findOneAndDelete({ user: userId });
+    if (!onboarding) {
       res.status(HttpStatusCode.NotFound).send({
         message: "Onboarding not found."
       });
       return;
     }
+    await models.user.findByIdAndUpdate(userId, { $unset: { onboarding: 1 } });
 
     res.status(HttpStatusCode.Ok).send({
       message: "Onboarding deleted successfully."
@@ -414,6 +282,59 @@ export async function deleteOnboarding(req: AuthenticatedRequest, res: Response,
 
   } catch (error) {
     console.error('Error deleting onboarding:', error);
+    next(error);
+  }
+}
+
+/**
+ * Initialize onboarding for a user
+ */
+export async function initializeOnboarding(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: "User authentication required."
+      });
+      return;
+    }
+    const user = await models.user.findById(userId);
+    if (!user) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: "User not found."
+      });
+      return;
+    }
+    const existingOnboarding = await models.onboarding.findOne({ user: userId });
+    if (existingOnboarding) {
+      res.status(HttpStatusCode.Conflict).send({
+        message: "Onboarding already exists for this user.",
+        onboarding: existingOnboarding,
+        nextStep: existingOnboarding.getNextStep(),
+        isComplete: existingOnboarding.isComplete()
+      });
+      return;
+    }
+    const onboarding = new models.onboarding({
+      user: userId,
+      completionPercentage: 0,
+      startedAt: new Date()
+    });
+
+    await onboarding.save();
+    await models.user.findByIdAndUpdate(userId, { onboarding: onboarding._id });
+
+    res.status(HttpStatusCode.Created).send({
+      message: "Onboarding initialized successfully.",
+      onboarding,
+      nextStep: onboarding.getNextStep(),
+      isComplete: onboarding.isComplete()
+    });
+    return;
+
+  } catch (error) {
+    console.error('Error initializing onboarding:', error);
     next(error);
   }
 }
