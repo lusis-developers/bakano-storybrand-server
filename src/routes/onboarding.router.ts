@@ -1,11 +1,11 @@
-  import { Router } from 'express';
+import { Router } from 'express';
 import {
   createOnboarding,
   getOnboarding,
   updateOnboarding,
-  getUserOnboardings,
   completeOnboardingStep,
-  deleteOnboarding
+  deleteOnboarding,
+  initializeOnboarding
 } from '../controllers/onboarding.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 
@@ -15,11 +15,17 @@ const router = Router();
 router.use(authMiddleware);
 
 /**
+ * @route POST /api/onboarding/initialize
+ * @desc Initialize onboarding for a user
+ * @access Private
+ */
+router.post('/initialize', initializeOnboarding);
+
+/**
  * @route POST /api/onboarding
- * @desc Create a new onboarding process
+ * @desc Create or update user onboarding process
  * @access Private
  * @body {
- *   businessId: string,
  *   userProfile: IUserProfile,
  *   businessContext: IBusinessContext,
  *   preferences?: Partial<IOnboardingPreferences>
@@ -29,24 +35,15 @@ router.post('/', createOnboarding);
 
 /**
  * @route GET /api/onboarding
- * @desc Get all onboardings for the authenticated user
+ * @desc Get user onboarding information
  * @access Private
  */
-router.get('/', getUserOnboardings);
+router.get('/', getOnboarding);
 
 /**
- * @route GET /api/onboarding/:businessId
- * @desc Get onboarding information for a specific business
+ * @route PUT /api/onboarding
+ * @desc Update user onboarding information
  * @access Private
- * @params businessId: string
- */
-router.get('/:businessId', getOnboarding);
-
-/**
- * @route PUT /api/onboarding/:businessId
- * @desc Update onboarding information
- * @access Private
- * @params businessId: string
  * @body {
  *   userProfile?: Partial<IUserProfile>,
  *   businessContext?: Partial<IBusinessContext>,
@@ -54,25 +51,21 @@ router.get('/:businessId', getOnboarding);
  *   completedStep?: 'user_profile' | 'business_context' | 'preferences' | 'first_content'
  * }
  */
-router.put('/:businessId', updateOnboarding);
+router.put('/', updateOnboarding);
 
 /**
- * @route POST /api/onboarding/:businessId/complete-step
- * @desc Mark a specific onboarding step as completed
+ * @route POST /api/onboarding/complete-step
+ * @desc Mark an onboarding step as completed
  * @access Private
- * @params businessId: string
- * @body {
- *   step: 'user_profile' | 'business_context' | 'preferences' | 'first_content'
- * }
+ * @body { step: string }
  */
-router.post('/:businessId/complete-step', completeOnboardingStep);
+router.post('/complete-step', completeOnboardingStep);
 
 /**
- * @route DELETE /api/onboarding/:businessId
- * @desc Delete onboarding (reset process)
+ * @route DELETE /api/onboarding
+ * @desc Delete user onboarding (reset process)
  * @access Private
- * @params businessId: string
  */
-router.delete('/:businessId', deleteOnboarding);
+router.delete('/', deleteOnboarding);
 
 export default router;
