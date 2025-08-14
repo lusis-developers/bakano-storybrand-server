@@ -44,11 +44,20 @@ export class ContentService {
     // Remove any leading/trailing whitespace
     cleaned = cleaned.trim();
     
-    // Find the first { and last } to extract just the JSON object
+    // Handle both JSON objects and arrays
     const firstBrace = cleaned.indexOf('{');
+    const firstBracket = cleaned.indexOf('[');
     const lastBrace = cleaned.lastIndexOf('}');
+    const lastBracket = cleaned.lastIndexOf(']');
     
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    // Determine if it's an array or object and extract accordingly
+    if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+      // It's an array
+      if (lastBracket !== -1 && lastBracket > firstBracket) {
+        cleaned = cleaned.substring(firstBracket, lastBracket + 1);
+      }
+    } else if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      // It's an object
       cleaned = cleaned.substring(firstBrace, lastBrace + 1);
     }
     
@@ -105,17 +114,70 @@ export class ContentService {
     try {
       response = await this.aiService.generateMarketingContent(prompt, 'social');
       const cleanedResponse = this.cleanAIResponse(response);
-      const parsedScript = JSON.parse(cleanedResponse);
+      
+      // Add validation before parsing
+      if (!cleanedResponse || cleanedResponse.trim() === '') {
+        throw new Error('Empty response from AI service');
+      }
+      
+      let parsedScript;
+       try {
+         parsedScript = JSON.parse(cleanedResponse);
+       } catch (parseError: any) {
+         console.error('JSON Parse Error:', parseError);
+         console.error('Cleaned response:', cleanedResponse);
+         console.error('Raw AI response:', response);
+         throw new Error(`Invalid JSON format in AI response: ${parseError.message}`);
+       }
+      
+      // Handle array response (multiple scripts) - take the first one
+      if (Array.isArray(parsedScript)) {
+        if (parsedScript.length === 0) {
+          throw new Error('AI returned empty array of scripts');
+        }
+        parsedScript = parsedScript[0];
+      }
+      
+      // Handle different response formats from AI
+      let scriptContent = '';
+      let scriptTitle = parsedScript.title || `${scriptType} Script`;
+      let scriptDuration = parsedScript.duration || 'N/A';
+      
+      if (parsedScript.content) {
+        // Standard format with content field
+        scriptContent = typeof parsedScript.content === 'string' 
+          ? parsedScript.content 
+          : JSON.stringify(parsedScript.content);
+      } else if (parsedScript.visual && parsedScript.caption && parsedScript.text) {
+        // Alternative format with visual, caption, text
+        scriptContent = `**Visual:** ${parsedScript.visual}\n\n**Caption:** ${parsedScript.caption}\n\n**Text:** ${parsedScript.text}`;
+        scriptTitle = `${scriptType} Script - Social Media Format`;
+      } else if (parsedScript.script) {
+        // Another possible format with script field
+        scriptContent = typeof parsedScript.script === 'string' 
+          ? parsedScript.script 
+          : JSON.stringify(parsedScript.script);
+      } else {
+        // Fallback: convert entire object to string
+        scriptContent = JSON.stringify(parsedScript, null, 2);
+      }
       
       return {
-        title: parsedScript.title || `${scriptType} Script`,
-        content: parsedScript.content || '',
-        duration: parsedScript.duration || 'N/A'
+        title: scriptTitle,
+        content: scriptContent,
+        duration: scriptDuration
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating script:', error);
-      console.error('Raw AI response:', response);
-      throw new Error('Failed to generate script');
+      if (response) {
+        console.error('Raw AI response:', response);
+      }
+      
+      // Re-throw with more specific error message
+      if (error.message && error.message.includes('JSON')) {
+        throw error;
+      }
+      throw new Error(`Failed to generate script: ${error.message || 'Unknown error'}`);
     }
   }
 
