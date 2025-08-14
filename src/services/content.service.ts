@@ -35,6 +35,27 @@ export class ContentService {
   }
 
   /**
+   * Clean AI response by removing markdown code blocks and extra formatting
+   */
+  private cleanAIResponse(response: string): string {
+    // Remove markdown code blocks
+    let cleaned = response.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+    
+    // Remove any leading/trailing whitespace
+    cleaned = cleaned.trim();
+    
+    // Find the first { and last } to extract just the JSON object
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+    }
+    
+    return cleaned;
+  }
+
+  /**
    * Generate soundbites and taglines based on business questions
    */
   async generateSoundbitesAndTaglines(
@@ -42,10 +63,12 @@ export class ContentService {
     tone: string = 'professional'
   ): Promise<IGeneratedContent> {
     const prompt = this.buildSoundbitesTaglinesPrompt(questions, tone);
+    let response: string = '';
     
     try {
-      const response = await this.aiService.generateMarketingContent(prompt, 'social');
-      const parsedContent = JSON.parse(response);
+      response = await this.aiService.generateMarketingContent(prompt, 'social');
+      const cleanedResponse = this.cleanAIResponse(response);
+      const parsedContent = JSON.parse(cleanedResponse);
       
       return {
         soundbites: parsedContent.soundbites || [],
@@ -53,6 +76,7 @@ export class ContentService {
       };
     } catch (error) {
       console.error('Error generating soundbites and taglines:', error);
+      console.error('Raw AI response:', response);
       throw new Error('Failed to generate soundbites and taglines');
     }
   }
@@ -76,10 +100,12 @@ export class ContentService {
       platform,
       tone
     );
+    let response: string = '';
     
     try {
-      const response = await this.aiService.generateMarketingContent(prompt, 'social');
-      const parsedScript = JSON.parse(response);
+      response = await this.aiService.generateMarketingContent(prompt, 'social');
+      const cleanedResponse = this.cleanAIResponse(response);
+      const parsedScript = JSON.parse(cleanedResponse);
       
       return {
         title: parsedScript.title || `${scriptType} Script`,
@@ -88,6 +114,7 @@ export class ContentService {
       };
     } catch (error) {
       console.error('Error generating script:', error);
+      console.error('Raw AI response:', response);
       throw new Error('Failed to generate script');
     }
   }
