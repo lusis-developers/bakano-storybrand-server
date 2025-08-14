@@ -6,7 +6,11 @@ import {
   generateSoundbitesAndTaglines,
   generateScripts,
   getUserContentProjects,
-  deleteContentProject
+  deleteContentProject,
+  getScripts,
+  deleteScript,
+  toggleScriptCompletion,
+  getBusinessByContentId
 } from '../controllers/content.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 
@@ -33,6 +37,13 @@ router.post('/business/:businessId', createContentProject);
  * @access Private
  */
 router.get('/business/:businessId', getContentByBusiness);
+
+/**
+ * @route GET /api/content/:contentId/business
+ * @desc Get business information by content ID
+ * @access Private
+ */
+router.get('/:contentId/business', getBusinessByContentId);
 
 /**
  * @route GET /api/content/projects
@@ -78,6 +89,37 @@ router.post('/:contentId/generate-soundbites-taglines', generateSoundbitesAndTag
  * }
  */
 router.post('/:contentId/generate-script', generateScripts);
+
+/**
+ * @route GET /api/content/:contentId/scripts
+ * @desc Get all scripts from content project with optional filtering
+ * @access Private
+ * @query {
+ *   type?: 'content' | 'ad',
+ *   platform?: 'youtube' | 'social' | 'email' | 'website',
+ *   startDate?: string (YYYY-MM-DD),
+ *   endDate?: string (YYYY-MM-DD),
+ *   completed?: 'true' | 'false'
+ * }
+ */
+router.get('/:contentId/scripts', getScripts);
+
+/**
+ * @route DELETE /api/content/:contentId/scripts/:scriptIndex
+ * @desc Delete a specific script from content project
+ * @access Private
+ */
+router.delete('/:contentId/scripts/:scriptIndex', deleteScript);
+
+/**
+ * @route PATCH /api/content/:contentId/scripts/:scriptIndex/completion
+ * @desc Toggle script completion status
+ * @access Private
+ * @body {
+ *   completed: boolean
+ * }
+ */
+router.patch('/:contentId/scripts/:scriptIndex/completion', toggleScriptCompletion);
 
 /**
  * @route DELETE /api/content/:contentId
