@@ -65,17 +65,19 @@ export async function generateContentScript(
 }
 
 /**
- * Create script object for database
+ * Create script object for saving to database
  */
 export function createScriptObject(
   scriptType: 'content' | 'ad',
   generatedScript: any,
-  platform?: string
+  platform?: string,
+  selectedSoundbite?: string,
+  selectedTagline?: string
 ): Partial<IScript> {
-  // Validate platform type
-  const validPlatforms = ['email', 'website', 'youtube', 'social'] as const;
+  // Validate platform if provided
+  const validPlatforms = ['youtube', 'instagram', 'tiktok', 'email', 'website', 'social'] as const;
   const validatedPlatform = platform && validPlatforms.includes(platform as any) 
-    ? platform as 'email' | 'website' | 'youtube' | 'social'
+    ? platform as 'youtube' | 'instagram' | 'tiktok' | 'email' | 'website' | 'social'
     : undefined;
 
   return {
@@ -84,6 +86,8 @@ export function createScriptObject(
     content: generatedScript.content,
     duration: generatedScript.duration,
     platform: validatedPlatform,
+    selectedSoundbite,
+    selectedTagline,
     completed: false,
     generatedAt: new Date()
   };
