@@ -90,9 +90,10 @@ class BrandScriptService {
    */
   async getOnboardingContext(businessId: string) {
     try {
-      const onboardingContext = await models.onboardingContext.findOne({
-        business: businessId
-      });
+      // TODO: Implement onboardingContext model
+      const onboardingContext = null; // await models.onboardingContext.findOne({
+      //   business: businessId
+      // });
       return onboardingContext;
     } catch (error) {
       console.error('Error obteniendo contexto de onboarding:', error);
