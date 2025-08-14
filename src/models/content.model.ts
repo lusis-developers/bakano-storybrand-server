@@ -35,6 +35,7 @@ export interface IScript {
   platform?: 'youtube' | 'social' | 'email' | 'website';
   selectedSoundbite?: string;
   selectedTagline?: string;
+  completed: boolean;
   generatedAt: Date;
 }
 
@@ -178,6 +179,10 @@ const scriptSchema = new Schema({
   selectedTagline: {
     type: String,
     trim: true
+  },
+  completed: {
+    type: Boolean,
+    default: false
   },
   generatedAt: {
     type: Date,
