@@ -151,9 +151,10 @@ export async function getBrandScriptCampaignReadiness(req: AuthRequest, res: Res
     const canCreateCampaign = isCompleted && hasRequiredFields;
 
     // Get existing campaigns for this BrandScript
-    const existingCampaigns = await models.campaign.find({
-      brandScript: brandScriptId
-    }).select('title status createdAt').sort({ createdAt: -1 });
+    // TODO: Implement campaign model
+    const existingCampaigns: any[] = []; // await models.campaign.find({
+    //   brandScript: brandScriptId
+    // }).select('title status createdAt').sort({ createdAt: -1 });
 
     res.status(HttpStatusCode.Ok).send({
       success: true,
