@@ -36,41 +36,76 @@ export class ContentService {
 
 	/**
 	 * Clean AI response by removing markdown code blocks and extra formatting
+	 * Handles multiple JSON objects by extracting only the first valid one
 	 */
 	private cleanAIResponse(response: string): string {
-		// Remove markdown code blocks
+		// Remove markdown code blocks and common prefixes
 		let cleaned = response
 			.replace(/```json\s*/gi, "")
-			.replace(/```\s*/g, "");
+			.replace(/```\s*/g, "")
+			.replace(/^Here's.*?:/gm, "") // Remove "Here's the response:" type prefixes
+			.replace(/^Response:/gm, "") // Remove "Response:" prefixes
+			.replace(/^JSON:/gm, "") // Remove "JSON:" prefixes
+			.replace(/\n\s*\n/g, "\n") // Remove multiple newlines
+			.replace(/[\u200B-\u200D\uFEFF]/g, ""); // Remove zero-width characters
 
 		// Remove any leading/trailing whitespace
 		cleaned = cleaned.trim();
 
-		// Handle both JSON objects and arrays
+		// Find the first complete JSON object
 		const firstBrace = cleaned.indexOf("{");
-		const firstBracket = cleaned.indexOf("[");
-		const lastBrace = cleaned.lastIndexOf("}");
-		const lastBracket = cleaned.lastIndexOf("]");
-
-		// Determine if it's an array or object and extract accordingly
-		if (
-			firstBracket !== -1 &&
-			(firstBrace === -1 || firstBracket < firstBrace)
-		) {
-			// It's an array
-			if (lastBracket !== -1 && lastBracket > firstBracket) {
-				cleaned = cleaned.substring(firstBracket, lastBracket + 1);
-			}
-		} else if (
-			firstBrace !== -1 &&
-			lastBrace !== -1 &&
-			lastBrace > firstBrace
-		) {
-			// It's an object
-			cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+		if (firstBrace === -1) {
+			return cleaned; // No JSON object found
 		}
 
-		return cleaned;
+		// Extract the first complete JSON object by counting braces
+		let braceCount = 0;
+		let inString = false;
+		let escapeNext = false;
+		let endIndex = -1;
+
+		for (let i = firstBrace; i < cleaned.length; i++) {
+			const char = cleaned[i];
+
+			if (escapeNext) {
+				escapeNext = false;
+				continue;
+			}
+
+			if (char === '\\') {
+				escapeNext = true;
+				continue;
+			}
+
+			if (char === '"' && !escapeNext) {
+				inString = !inString;
+				continue;
+			}
+
+			if (!inString) {
+				if (char === '{') {
+					braceCount++;
+				} else if (char === '}') {
+					braceCount--;
+					if (braceCount === 0) {
+						endIndex = i;
+						break;
+					}
+				}
+			}
+		}
+
+		if (endIndex !== -1) {
+			cleaned = cleaned.substring(firstBrace, endIndex + 1);
+		} else {
+			// Fallback: try to find the last closing brace
+			const lastBrace = cleaned.lastIndexOf("}");
+			if (lastBrace > firstBrace) {
+				cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+			}
+		}
+
+		return cleaned.trim();
 	}
 
 	/**
