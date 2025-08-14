@@ -406,6 +406,7 @@ export async function generateScripts(req: AuthRequest, res: Response, next: Nex
       content: generatedScript.content,
       duration: generatedScript.duration,
       platform: platform || undefined,
+      completed: false,
       generatedAt: new Date()
     };
 
@@ -479,6 +480,338 @@ export async function getUserContentProjects(req: AuthRequest, res: Response, ne
 }
 
 /**
+ * Get all scripts from a content project
+ */
+export async function getScripts(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { contentId } = req.params;
+    const { type, startDate, endDate, platform, completed } = req.query;
+
+    // Validate content ID
+    if (!Types.ObjectId.isValid(contentId)) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: "Invalid content ID format."
+      });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: "User authentication required."
+      });
+      return;
+    }
+
+    // Find content project
+    const content = await models.content.findById(contentId);
+    if (!content) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: "Content project not found."
+      });
+      return;
+    }
+
+    // Verify business belongs to user
+    const business = await models.business.findOne({
+      _id: content.business,
+      owner: req.user.id
+    });
+
+    if (!business) {
+      res.status(HttpStatusCode.Forbidden).send({
+        message: "Access denied to this content project."
+      });
+      return;
+    }
+
+    // Apply filters to scripts
+    let scripts = content.scripts;
+
+    // Filter by type
+    if (type && ['content', 'ad'].includes(type as string)) {
+      scripts = scripts.filter(script => script.type === type);
+    }
+
+    // Filter by platform
+    if (platform && ['youtube', 'social', 'email', 'website'].includes(platform as string)) {
+      scripts = scripts.filter(script => script.platform === platform);
+    }
+
+    // Filter by completion status
+    if (completed !== undefined) {
+      const isCompleted = completed === 'true';
+      scripts = scripts.filter(script => script.completed === isCompleted);
+    }
+
+    // Filter by date range
+    if (startDate || endDate) {
+      scripts = scripts.filter(script => {
+        const scriptDate = new Date(script.generatedAt);
+        
+        if (startDate && endDate) {
+          const start = new Date(startDate as string);
+          const end = new Date(endDate as string);
+          // Set end date to end of day
+          end.setHours(23, 59, 59, 999);
+          return scriptDate >= start && scriptDate <= end;
+        } else if (startDate) {
+          const start = new Date(startDate as string);
+          return scriptDate >= start;
+        } else if (endDate) {
+          const end = new Date(endDate as string);
+          // Set end date to end of day
+          end.setHours(23, 59, 59, 999);
+          return scriptDate <= end;
+        }
+        return true;
+      });
+    }
+
+    // Sort scripts by generation date (newest first)
+    scripts.sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+
+    res.status(HttpStatusCode.Ok).send({
+      message: "Scripts retrieved successfully.",
+      scripts,
+      total: scripts.length,
+      filters: {
+        type: type || null,
+        platform: platform || null,
+        startDate: startDate || null,
+        endDate: endDate || null,
+        completed: completed || null
+      }
+    });
+    return;
+
+  } catch (error) {
+    console.error('Error retrieving scripts:', error);
+    next(error);
+  }
+}
+
+/**
+ * Delete a specific script from a content project
+ */
+export async function deleteScript(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { contentId, scriptIndex } = req.params;
+
+    // Validate content ID
+    if (!Types.ObjectId.isValid(contentId)) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: "Invalid content ID format."
+      });
+      return;
+    }
+
+    // Validate script index
+    const scriptIndexNum = parseInt(scriptIndex);
+    if (isNaN(scriptIndexNum) || scriptIndexNum < 0) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: "Invalid script index format."
+      });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: "User authentication required."
+      });
+      return;
+    }
+
+    // Find content project
+    const content = await models.content.findById(contentId);
+    if (!content) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: "Content project not found."
+      });
+      return;
+    }
+
+    // Verify business belongs to user
+    const business = await models.business.findOne({
+      _id: content.business,
+      owner: req.user.id
+    });
+
+    if (!business) {
+      res.status(HttpStatusCode.Forbidden).send({
+        message: "Access denied to this content project."
+      });
+      return;
+    }
+
+    // Check if script index exists
+    if (scriptIndexNum >= content.scripts.length) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: "Script not found at the specified index."
+      });
+      return;
+    }
+
+    // Remove script from array
+    content.scripts.splice(scriptIndexNum, 1);
+    await content.save();
+
+    res.status(HttpStatusCode.Ok).send({
+      message: "Script deleted successfully.",
+      remainingScripts: content.scripts.length
+    });
+    return;
+
+  } catch (error) {
+    console.error('Error deleting script:', error);
+    next(error);
+  }
+}
+
+/**
+ * Toggle script completion status
+ */
+export async function toggleScriptCompletion(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { contentId, scriptIndex } = req.params;
+    const { completed } = req.body;
+
+    // Validate content ID
+    if (!Types.ObjectId.isValid(contentId)) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: "Invalid content ID format."
+      });
+      return;
+    }
+
+    // Validate script index
+    const scriptIndexNum = parseInt(scriptIndex);
+    if (isNaN(scriptIndexNum) || scriptIndexNum < 0) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: "Invalid script index format."
+      });
+      return;
+    }
+
+    // Validate completed field
+    if (typeof completed !== 'boolean') {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: "Completed field must be a boolean value."
+      });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: "User authentication required."
+      });
+      return;
+    }
+
+    // Find content project
+    const content = await models.content.findById(contentId);
+    if (!content) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: "Content project not found."
+      });
+      return;
+    }
+
+    // Verify business belongs to user
+    const business = await models.business.findOne({
+      _id: content.business,
+      owner: req.user.id
+    });
+
+    if (!business) {
+      res.status(HttpStatusCode.Forbidden).send({
+        message: "Access denied to this content project."
+      });
+      return;
+    }
+
+    // Check if script index exists
+    if (scriptIndexNum >= content.scripts.length) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: "Script not found at the specified index."
+      });
+      return;
+    }
+
+    // Update script completion status
+    content.scripts[scriptIndexNum].completed = completed;
+    await content.save();
+
+    res.status(HttpStatusCode.Ok).send({
+      message: `Script marked as ${completed ? 'completed' : 'not completed'} successfully.`,
+      script: content.scripts[scriptIndexNum]
+    });
+    return;
+
+  } catch (error) {
+    console.error('Error toggling script completion:', error);
+    next(error);
+  }
+}
+
+/**
+ * Get business information by content ID
+ */
+export async function getBusinessByContentId(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { contentId } = req.params;
+
+    // Validate content ID
+    if (!Types.ObjectId.isValid(contentId)) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: "Invalid content ID format."
+      });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: "User authentication required."
+      });
+      return;
+    }
+
+    // Find content project and populate business information
+    const content = await models.content.findById(contentId)
+      .populate('business');
+
+    if (!content) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: "Content project not found."
+      });
+      return;
+    }
+
+    // Verify business belongs to user
+    const business = await models.business.findOne({
+      _id: content.business,
+      owner: req.user.id
+    });
+
+    if (!business) {
+      res.status(HttpStatusCode.Forbidden).send({
+        message: "Access denied to this content project."
+      });
+      return;
+    }
+
+    res.status(HttpStatusCode.Ok).send({
+      message: "Business information retrieved successfully.",
+      business: content.business
+    });
+    return;
+
+  } catch (error) {
+    console.error('Error retrieving business by content ID:', error);
+    next(error);
+  }
+}
+
+/**
  * Delete content project
  */
 export async function deleteContentProject(req: AuthRequest, res: Response, next: NextFunction) {
@@ -512,7 +845,7 @@ export async function deleteContentProject(req: AuthRequest, res: Response, next
     // Verify business belongs to user
     const business = await models.business.findOne({
       _id: content.business,
-      user: req.user.id
+      owner: req.user.id
     });
 
     if (!business) {
