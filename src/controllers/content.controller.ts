@@ -5,19 +5,24 @@ import { HttpStatusCode } from 'axios';
 import type { AuthRequest } from '../types/AuthRequest';
 import { ContentService, type ITaglineGeneration } from '../services/content.service';
 import { sanitizeContentQuestions } from '../utils/content.util';
+import {
+  validateContentId,
+  validateScriptType,
+  validateUserAuth,
+  validateContentExists,
+  validateContentOwnership,
+  validateSoundbitesAndTaglines,
+  validateSoundbitesTaglinesAvailable
+} from '../utils/content.validators';
+import {
+  mapTaglineStyle,
+  generateContentSoundbitesAndTaglines,
+  generateContentScript,
+  createScriptObject,
+  getSoundbiteAndTagline
+} from '../utils/content.helpers';
 
-/**
- * Helper function to map tagline styles from service to model
- */
-function mapTaglineStyle(serviceStyle: ITaglineGeneration['style']): 'professional' | 'casual' | 'creative' | 'direct' {
-  const styleMap: Record<ITaglineGeneration['style'], 'professional' | 'casual' | 'creative' | 'direct'> = {
-    'catchy': 'creative',
-    'professional': 'professional',
-    'emotional': 'casual',
-    'action-oriented': 'direct'
-  };
-  return styleMap[serviceStyle] || 'professional';
-}
+
 
 /**
  * Create a new content project for a business
@@ -216,41 +221,18 @@ export async function generateSoundbitesAndTaglines(req: AuthRequest, res: Respo
     const { regenerate = false } = req.body;
 
     // Validate content ID
-    if (!Types.ObjectId.isValid(contentId)) {
-      res.status(HttpStatusCode.BadRequest).send({
-        message: "Invalid content ID format."
-      });
-      return;
-    }
+    if (!validateContentId(contentId, res)) return;
 
-    // Find content project
-    const content = await models.content.findById(contentId);
-    if (!content) {
-      res.status(HttpStatusCode.NotFound).send({
-        message: "Content project not found."
-      });
-      return;
-    }
+    // Validate user authentication
+    if (!validateUserAuth(req, res)) return;
 
-    if (!req.user) {
-      res.status(HttpStatusCode.Unauthorized).send({
-        message: "User authentication required."
-      });
-      return;
-    }
+    // Validate content exists
+    const content = await validateContentExists(contentId, res);
+    if (!content) return;
 
-    // Verify business belongs to user
-    const business = await models.business.findOne({
-      _id: content.business,
-      owner: req.user.id
-    });
-
-    if (!business) {
-      res.status(HttpStatusCode.Forbidden).send({
-        message: "Access denied to this content project."
-      });
-      return;
-    }
+    // Validate content ownership
+    const business = await validateContentOwnership(content, req.user!.id, res);
+    if (!business) return;
 
     // Check if questions are complete
     if (!(content as any).isQuestionsComplete()) {
@@ -270,36 +252,30 @@ export async function generateSoundbitesAndTaglines(req: AuthRequest, res: Respo
       return;
     }
 
-    // Generate content using ContentService
-    const contentService = new ContentService(content.aiProvider);
-    const generatedContent = await contentService.generateSoundbitesAndTaglines(
-      content.questions,
-      content.tone
-    );
-
     // Clear existing content if regenerating
     if (regenerate) {
       content.soundbites = [];
       content.taglines = [];
     }
 
-    // Add generated soundbites
-    if (generatedContent.soundbites) {
-      content.soundbites.push(...generatedContent.soundbites.map(sb => ({
-        text: sb.text,
-        category: sb.category,
-        generatedAt: new Date()
-      })));
-    }
+    // Generate content using helper function
+    const contentService = new ContentService(content.aiProvider);
+    const { soundbites, taglines } = await generateContentSoundbitesAndTaglines(
+      contentService,
+      content.questions,
+      content.tone
+    );
 
-    // Add generated taglines
-    if (generatedContent.taglines) {
-      content.taglines.push(...generatedContent.taglines.map((tl: ITaglineGeneration) => ({
-        text: tl.text,
-        style: mapTaglineStyle(tl.style),
-        generatedAt: new Date()
-      })));
-    }
+    // Add generated content with timestamps
+    content.soundbites.push(...soundbites.map(sb => ({
+      ...sb,
+      generatedAt: new Date()
+    })));
+
+    content.taglines.push(...taglines.map(tl => ({
+      ...tl,
+      generatedAt: new Date()
+    })));
 
     await content.save();
 
@@ -325,72 +301,39 @@ export async function generateScripts(req: AuthRequest, res: Response, next: Nex
     const { scriptType, platform, selectedSoundbite, selectedTagline } = req.body;
 
     // Validate content ID
-    if (!Types.ObjectId.isValid(contentId)) {
-      res.status(HttpStatusCode.BadRequest).send({
-        message: "Invalid content ID format."
-      });
-      return;
-    }
+    if (!validateContentId(contentId, res)) return;
 
-    // Validate required fields
-    if (!scriptType || !['content', 'ad'].includes(scriptType)) {
-      res.status(HttpStatusCode.BadRequest).send({
-        message: "Script type must be 'content' or 'ad'."
-      });
-      return;
-    }
+    // Validate script type
+    if (!validateScriptType(scriptType, res)) return;
 
-    // Find content project
-    const content = await models.content.findById(contentId);
-    if (!content) {
-      res.status(HttpStatusCode.NotFound).send({
-        message: "Content project not found."
-      });
-      return;
-    }
+    // Validate user authentication
+    if (!validateUserAuth(req, res)) return;
 
-    if (!req.user) {
-      res.status(HttpStatusCode.Unauthorized).send({
-        message: "User authentication required."
-      });
-      return;
-    }
+    // Validate content exists
+    const content = await validateContentExists(contentId, res);
+    if (!content) return;
 
-    // Verify business belongs to user
-    const business = await models.business.findOne({
-      _id: content.business,
-      owner: req.user.id
-    });
+    // Validate content ownership
+    const business = await validateContentOwnership(content, req.user!.id, res);
+    if (!business) return;
 
-    if (!business) {
-      res.status(HttpStatusCode.Forbidden).send({
-        message: "Access denied to this content project."
-      });
-      return;
-    }
+    // Validate soundbites and taglines exist
+    if (!validateSoundbitesAndTaglines(content, res)) return;
 
-    // Check if soundbites and taglines exist
-    if (content.soundbites.length === 0 || content.taglines.length === 0) {
-      res.status(HttpStatusCode.BadRequest).send({
-        message: "Please generate soundbites and taglines first."
-      });
-      return;
-    }
+    // Get soundbite and tagline
+    const { soundbite, tagline } = getSoundbiteAndTagline(
+      content,
+      selectedSoundbite,
+      selectedTagline
+    );
+
+    // Validate soundbites and taglines are available
+    if (!validateSoundbitesTaglinesAvailable(soundbite, tagline, res)) return;
 
     // Generate script using ContentService
     const contentService = new ContentService(content.aiProvider);
-    
-    const soundbite = selectedSoundbite || content.soundbites[0]?.text;
-    const tagline = selectedTagline || content.taglines[0]?.text;
-
-    if (!soundbite || !tagline) {
-      res.status(HttpStatusCode.BadRequest).send({
-        message: "No soundbites or taglines available. Please generate them first."
-      });
-      return;
-    }
-
-    const generatedScript = await contentService.generateScript(
+    const generatedScript = await generateContentScript(
+      contentService,
       content.questions,
       scriptType,
       soundbite,
@@ -399,18 +342,11 @@ export async function generateScripts(req: AuthRequest, res: Response, next: Nex
       content.tone
     );
 
-    // Add script to content
-    const newScript = {
-      type: scriptType,
-      title: generatedScript.title,
-      content: generatedScript.content,
-      duration: generatedScript.duration,
-      platform: platform || undefined,
-      completed: false,
-      generatedAt: new Date()
-    };
+    // Create script object
+    const newScript = createScriptObject(scriptType, generatedScript, platform);
 
-    content.scripts.push(newScript);
+    // Add script to content
+    content.scripts.push(newScript as any);
     await content.save();
 
     res.status(HttpStatusCode.Created).send({
