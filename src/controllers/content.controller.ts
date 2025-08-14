@@ -44,7 +44,7 @@ export async function createContentProject(req: AuthRequest, res: Response, next
     // Verify business exists and belongs to user
     const business = await models.business.findOne({
       _id: businessId,
-      user: req.user.id
+      owner: req.user.id
     });
 
     if (!business) {
@@ -123,7 +123,7 @@ export async function getContentByBusiness(req: AuthRequest, res: Response, next
     // Verify business belongs to user
     const business = await models.business.findOne({
       _id: businessId,
-      user: req.user.id
+      owner: req.user.id
     });
 
     if (!business) {
@@ -180,7 +180,7 @@ export async function updateQuestions(req: AuthRequest, res: Response, next: Nex
     // Verify business belongs to user
     const business = await models.business.findOne({
       _id: content.business,
-      user: req.user.id
+      owner: req.user.id
     });
 
     if (!business) {
@@ -241,7 +241,7 @@ export async function generateSoundbitesAndTaglines(req: AuthRequest, res: Respo
     // Verify business belongs to user
     const business = await models.business.findOne({
       _id: content.business,
-      user: req.user.id
+      owner: req.user.id
     });
 
     if (!business) {
@@ -358,7 +358,7 @@ export async function generateScripts(req: AuthRequest, res: Response, next: Nex
     // Verify business belongs to user
     const business = await models.business.findOne({
       _id: content.business,
-      user: req.user.id
+      owner: req.user.id
     });
 
     if (!business) {
@@ -444,7 +444,7 @@ export async function getUserContentProjects(req: AuthRequest, res: Response, ne
     }
 
     // Get user's businesses
-    const userBusinesses = await models.business.find({ user: req.user.id }).select('_id');
+    const userBusinesses = await models.business.find({ owner: req.user.id }).select('_id');
     const businessIds = userBusinesses.map((b: any) => b._id);
 
     query.business = { $in: businessIds };
