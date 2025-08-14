@@ -94,6 +94,106 @@ export async function createContentProject(req: AuthRequest, res: Response, next
 }
 
 /**
+ * Get user script statistics including business count and total scripts
+ */
+export async function getUserScriptStatistics(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    if (!req.user) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: "User authentication required."
+      });
+      return;
+    }
+
+    const userId = req.user.id;
+    const userBusinesses = await models.business.find({ owner: userId }).select('_id name');
+    const businessIds = userBusinesses.map(business => business._id);
+
+    if (businessIds.length === 0) {
+      res.status(HttpStatusCode.Ok).send({
+        message: "User script statistics retrieved successfully.",
+        statistics: {
+          totalBusinesses: 0,
+          totalScripts: 0,
+          scriptsByType: {
+            content: 0,
+            ad: 0
+          },
+          scriptsByPlatform: {},
+          businesses: []
+        }
+      });
+      return;
+    }
+
+    // Get all content projects for user's businesses
+    const contentProjects = await models.content.find({ 
+      business: { $in: businessIds } 
+    }).populate('business', 'name');
+
+    // Calculate statistics
+    let totalScripts = 0;
+    let contentScripts = 0;
+    let adScripts = 0;
+    const platformCounts: Record<string, number> = {};
+    const businessStats: Array<{
+      businessId: string;
+      businessName: string;
+      totalScripts: number;
+      contentScripts: number;
+      adScripts: number;
+    }> = [];
+
+    contentProjects.forEach(project => {
+      const businessScripts = project.scripts || [];
+      const businessContentScripts = businessScripts.filter(script => script.type === 'content').length;
+      const businessAdScripts = businessScripts.filter(script => script.type === 'ad').length;
+      const businessTotalScripts = businessScripts.length;
+
+      totalScripts += businessTotalScripts;
+      contentScripts += businessContentScripts;
+      adScripts += businessAdScripts;
+
+      // Count by platform
+      businessScripts.forEach(script => {
+        if (script.platform) {
+          platformCounts[script.platform] = (platformCounts[script.platform] || 0) + 1;
+        }
+      });
+
+      // Add business stats
+      const business = project.business as any;
+      businessStats.push({
+        businessId: business._id.toString(),
+        businessName: business.name,
+        totalScripts: businessTotalScripts,
+        contentScripts: businessContentScripts,
+        adScripts: businessAdScripts
+      });
+    });
+
+    res.status(HttpStatusCode.Ok).send({
+      message: "User script statistics retrieved successfully.",
+      statistics: {
+        totalBusinesses: userBusinesses.length,
+        totalScripts,
+        scriptsByType: {
+          content: contentScripts,
+          ad: adScripts
+        },
+        scriptsByPlatform: platformCounts,
+        businesses: businessStats
+      }
+    });
+    return;
+
+  } catch (error) {
+    console.error('Error getting user script statistics:', error);
+    next(error);
+  }
+}
+
+/**
  * Get content project by business ID
  */
 export async function getContentByBusiness(req: AuthRequest, res: Response, next: NextFunction) {
