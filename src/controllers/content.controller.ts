@@ -343,7 +343,13 @@ export async function generateScripts(req: AuthRequest, res: Response, next: Nex
     );
 
     // Create script object
-    const newScript = createScriptObject(scriptType, generatedScript, platform);
+    const newScript = createScriptObject(
+      scriptType, 
+      generatedScript, 
+      platform,
+      soundbite,
+      tagline
+    );
 
     // Add script to content
     content.scripts.push(newScript as any);
