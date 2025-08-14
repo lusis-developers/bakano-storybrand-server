@@ -4,6 +4,7 @@ import models from '../models';
 import { HttpStatusCode } from 'axios';
 import type { AuthRequest } from '../types/AuthRequest';
 import { ContentService, type ITaglineGeneration } from '../services/content.service';
+import { sanitizeContentQuestions } from '../utils/content.util';
 
 /**
  * Helper function to map tagline styles from service to model
@@ -67,7 +68,7 @@ export async function createContentProject(req: AuthRequest, res: Response, next
     // Create new content project
     const content = new models.content({
       business: businessId,
-      questions,
+      questions: sanitizeContentQuestions(questions),
       tone,
       aiProvider,
       status: 'draft'
@@ -191,7 +192,7 @@ export async function updateQuestions(req: AuthRequest, res: Response, next: Nex
     }
 
     // Update questions
-    content.questions = { ...content.questions, ...questions };
+    content.questions = { ...content.questions, ...sanitizeContentQuestions(questions) };
     await content.save();
 
     res.status(HttpStatusCode.Ok).send({
@@ -311,7 +312,7 @@ export async function generateSoundbitesAndTaglines(req: AuthRequest, res: Respo
 
   } catch (error) {
     console.error('Error generating soundbites and taglines:', error);
-    next(error);
+    // next(error);
   }
 }
 
