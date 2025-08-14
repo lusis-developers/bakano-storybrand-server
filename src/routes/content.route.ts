@@ -10,7 +10,8 @@ import {
   getScripts,
   deleteScript,
   toggleScriptCompletion,
-  getBusinessByContentId
+  getBusinessByContentId,
+  getUserScriptStatistics
 } from '../controllers/content.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 
@@ -127,5 +128,12 @@ router.patch('/:contentId/scripts/:scriptIndex/completion', toggleScriptCompleti
  * @access Private
  */
 router.delete('/:contentId', deleteContentProject);
+
+/**
+ * @route GET /api/content/user/statistics
+ * @desc Get user script statistics including business count and total scripts
+ * @access Private
+ */
+router.get('/user/statistics', getUserScriptStatistics);
 
 export default router;
