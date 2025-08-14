@@ -32,7 +32,7 @@ export interface IScript {
   title: string;
   content: string;
   duration?: string;
-  platform?: 'youtube' | 'social' | 'email' | 'website';
+  platform?: 'youtube' | 'instagram' | 'tiktok' | 'email' | 'website' | 'social';
   selectedSoundbite?: string;
   selectedTagline?: string;
   completed: boolean;
@@ -170,7 +170,7 @@ const scriptSchema = new Schema({
   },
   platform: {
     type: String,
-    enum: ['youtube', 'social', 'email', 'website']
+    enum: ['youtube', 'instagram', 'tiktok', 'email', 'website', 'social']
   },
   selectedSoundbite: {
     type: String,
