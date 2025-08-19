@@ -5,6 +5,75 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { HttpStatusCode } from 'axios';
 import ResendEmail from '../services/resend.service';
+
+/**
+ * @description Creates a new admin user with generated password
+ * @route POST /api/auth/create-admin
+ */
+export async function createAdminController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { email, firstName, lastName } = req.body;
+
+    // 1. Basic input validation
+    if (!email || !firstName || !lastName) {
+      res.status(HttpStatusCode.BadRequest).send({ 
+        success: false,
+        message: 'Email, firstName, and lastName are required' 
+      });
+      return;
+    }
+
+    // 2. Check if user already exists
+    const existingUser = await models.user.findOne({ email });
+    if (existingUser) {
+      res.status(HttpStatusCode.Conflict).send({ 
+        success: false,
+        message: 'User with this email already exists' 
+      });
+      return;
+    }
+
+    // 3. Generate secure random password
+    const generatedPassword = crypto.randomBytes(12).toString('base64').slice(0, 16);
+    
+    // 4. Hash the generated password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(generatedPassword, salt);
+
+    // 5. Create new admin user in database
+    const newAdmin = await models.user.create({
+      firstName,
+      lastName,
+      email,
+      password: hashedPassword,
+      role: 'admin',
+      isVerified: true // Admin accounts are pre-verified
+    });
+
+    // 7. Prepare response
+    const adminResponse = {
+      id: newAdmin._id,
+      firstName: newAdmin.firstName,
+      lastName: newAdmin.lastName,
+      email: newAdmin.email,
+      role: newAdmin.role,
+      isVerified: newAdmin.isVerified,
+      createdAt: newAdmin.createdAt,
+      generatedPassword // Include the generated password in response
+    };
+
+    res.status(HttpStatusCode.Created).send({
+      success: true,
+      message: 'Admin account created successfully',
+      admin: adminResponse
+    });
+    return;
+
+  } catch (error) {
+    console.error('Error creating admin account:', error);
+    next(error);
+  }
+}
 /**
  * @description Registra un nuevo usuario en la base de datos.
  * @route POST /api/auth/register
