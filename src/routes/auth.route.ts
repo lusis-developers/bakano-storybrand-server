@@ -1,5 +1,5 @@
 import express from 'express'
-import { loginUserController, registerUserController, verifyUserController } from '../controllers/auth.controller'
+import { loginUserController, registerUserController, verifyUserController, createAdminController } from '../controllers/auth.controller'
 
 const router = express.Router()
 
@@ -7,5 +7,6 @@ const router = express.Router()
 router.post('/register', registerUserController)
 router.post('/login', loginUserController)
 router.get('/verify/:token', verifyUserController)
+router.post('/create-admin', createAdminController)
 
 export default router
