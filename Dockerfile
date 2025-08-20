@@ -26,10 +26,7 @@ RUN pnpm install
 # Copiar el resto del código fuente de la aplicación
 COPY . .
 
-# Copiar las credenciales a su futura ruta en /dist
-# Se hace antes del build si el build las necesita, o se puede mover para después.
-# Asumiendo que el build no las empaqueta, las copiamos directamente.
-COPY src/credentials ./dist/credentials
+
 
 # Compilar la aplicación
 RUN pnpm run build
