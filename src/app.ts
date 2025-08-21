@@ -11,8 +11,6 @@ export default function createApp() {
 
   const server = http.createServer(app);
 
-  app.set('trust proxy', 1);
-
   const whitelist = [
     "http://localhost:8100",
     "http://localhost:8080",
