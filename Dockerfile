@@ -57,7 +57,7 @@ COPY --from=builder /usr/src/app/dist ./dist
 RUN mkdir uploads
 
 # Exponer el puerto en el que la aplicación se ejecutará
-EXPOSE 8000
+EXPOSE 8100
 
 # Comando para iniciar la aplicación en producción
 CMD [ "node", "dist/index.js" ]
