@@ -30,7 +30,7 @@ export interface IBusinessContext {
   currentMarketingChannels: ('social_media' | 'email' | 'content_marketing' | 'paid_ads' | 'seo' | 'events' | 'partnerships' | 'traditional')[];
   marketingChallenges: ('inconsistent_messaging' | 'low_engagement' | 'poor_conversion' | 'limited_reach' | 'high_costs' | 'measuring_roi')[];
   contentCreationFrequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'as_needed';
-  brandVoice: 'professional' | 'friendly' | 'authoritative' | 'innovative' | 'trustworthy' | 'playful';
+  brandVoice: 'professional' | 'friendly' | 'authoritative' | 'innovative' | 'trustworthy' | 'playful' | 'casual';
 }
 
 // Interface for onboarding preferences
@@ -185,7 +185,7 @@ const businessContextSchema = new Schema({
   },
   brandVoice: {
     type: String,
-    enum: ['professional', 'friendly', 'authoritative', 'innovative', 'trustworthy', 'playful'],
+    enum: ['professional', 'friendly', 'authoritative', 'innovative', 'trustworthy', 'playful', 'casual'],
     required: true
   }
 }, { _id: false });
