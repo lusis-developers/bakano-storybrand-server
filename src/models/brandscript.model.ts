@@ -113,8 +113,7 @@ const brandScriptSchema = new Schema({
   business: {
     type: Schema.Types.ObjectId,
     ref: 'Business',
-    required: true,
-    index: true
+    required: true
   },
   answers: {
     type: answersSchema,
