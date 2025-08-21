@@ -195,8 +195,7 @@ const contentSchema = new Schema<IContent>({
   business: {
     type: Schema.Types.ObjectId,
     ref: 'Business',
-    required: true,
-    index: true
+    required: true
   },
   
   questions: {
