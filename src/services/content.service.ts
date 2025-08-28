@@ -174,7 +174,8 @@ export class ContentService {
 		selectedSoundbite: string,
 		selectedTagline: string,
 		platform?: string,
-		tone: string = "professional"
+		tone: string = "professional",
+		customText?: string
 	): Promise<IScriptGeneration> {
 		const prompt = this.buildScriptPrompt(
 			questions,
@@ -182,7 +183,8 @@ export class ContentService {
 			selectedSoundbite,
 			selectedTagline,
 			platform,
-			tone
+			tone,
+			customText
 		);
 		let response: string = "";
 
@@ -365,7 +367,8 @@ Generate 3 soundbites and 3 taglines that:
 		selectedSoundbite: string,
 		selectedTagline: string,
 		platform?: string,
-		tone: string = "professional"
+		tone: string = "professional",
+		customText?: string
 	): string {
 		const scriptPurpose =
 			scriptType === "ad"
@@ -394,7 +397,10 @@ Steps: ${questions.steps}
 **KEY MESSAGING:**
 Soundbite: "${selectedSoundbite}"
 Tagline: "${selectedTagline}"
-
+${customText ? `
+**CUSTOM REQUIREMENTS:**
+${customText}
+` : ''}
 **SCRIPT DETAILS:**
 Type: ${scriptType}
 Platform: ${platform || "general"}
