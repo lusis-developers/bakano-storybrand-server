@@ -52,7 +52,8 @@ export async function generateContentScript(
   soundbite: string,
   tagline: string,
   platform: string | undefined,
-  tone: string
+  tone: string,
+  customText?: string
 ) {
   return await contentService.generateScript(
     questions,
@@ -60,7 +61,8 @@ export async function generateContentScript(
     soundbite,
     tagline,
     platform,
-    tone
+    tone,
+    customText
   );
 }
 
