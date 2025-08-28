@@ -62,24 +62,34 @@ export async function createContentProject(req: AuthRequest, res: Response, next
 
     // Check if content project already exists for this business
     const existingContent = await models.content.findOne({ business: businessId });
-    if (existingContent) {
-      res.status(HttpStatusCode.Conflict).send({
-        message: "Content project already exists for this business.",
-        contentId: existingContent._id
+    
+    let content;
+     if (existingContent) {
+       // Update existing content project
+       const sanitizedQuestions = sanitizeContentQuestions(questions);
+       existingContent.questions = sanitizedQuestions as any;
+       existingContent.tone = tone;
+       existingContent.aiProvider = aiProvider;
+       existingContent.status = 'draft';
+       
+       // Clear existing generated content to allow regeneration
+       existingContent.soundbites = [];
+       existingContent.taglines = [];
+       existingContent.scripts = [];
+       
+       content = await existingContent.save();
+     } else {
+      // Create new content project
+      content = new models.content({
+        business: businessId,
+        questions: sanitizeContentQuestions(questions),
+        tone,
+        aiProvider,
+        status: 'draft'
       });
-      return;
+      
+      await content.save();
     }
-
-    // Create new content project
-    const content = new models.content({
-      business: businessId,
-      questions: sanitizeContentQuestions(questions),
-      tone,
-      aiProvider,
-      status: 'draft'
-    });
-
-    await content.save();
 
     res.status(HttpStatusCode.Created).send({
       message: "Content project created successfully.",
@@ -388,7 +398,7 @@ export async function generateSoundbitesAndTaglines(req: AuthRequest, res: Respo
 
   } catch (error) {
     console.error('Error generating soundbites and taglines:', error);
-    // next(error);
+    next(error);
   }
 }
 
