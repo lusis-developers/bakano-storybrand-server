@@ -408,7 +408,7 @@ export async function generateSoundbitesAndTaglines(req: AuthRequest, res: Respo
 export async function generateScripts(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { contentId } = req.params;
-    const { scriptType, platform, selectedSoundbite, selectedTagline } = req.body;
+    const { scriptType, platform, selectedSoundbite, selectedTagline, customText } = req.body;
 
     // Validate content ID
     if (!validateContentId(contentId, res)) return;
@@ -449,7 +449,8 @@ export async function generateScripts(req: AuthRequest, res: Response, next: Nex
       soundbite,
       tagline,
       platform,
-      content.tone
+      content.tone,
+      customText
     );
 
     // Create script object
