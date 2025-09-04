@@ -5,6 +5,7 @@ import businessRouter from './business.route';
 import brandscriptRouter from './brandscript.route';
 import contentRouter from './content.route';
 import onboardingRouter from './onboarding.router';
+import storybrandAccountRouter from './storybrand-account.route';
 
 function routerApi(app: Application) {
   const router = express.Router();
@@ -16,6 +17,7 @@ function routerApi(app: Application) {
   router.use("/brandscripts", brandscriptRouter);
   router.use("/content", contentRouter);
   router.use("/onboarding", onboardingRouter);
+  router.use("/storybrand-account", storybrandAccountRouter);
 }
 
 export default routerApi;
