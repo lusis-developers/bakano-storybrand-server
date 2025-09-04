@@ -455,14 +455,14 @@ ${
 {
   "title": "Concise script title (max 100 characters)",
   "content": "Full script content with clear sections and timing cues. Use line breaks and escape quotes properly.",
-  "duration": "Estimated duration (45-60 seconds maximum)"
+  "duration": "Estimated duration (30-33 seconds maximum)"
 }
 
 **JSON VALIDATION EXAMPLE:**
 {
   "title": "Stop Losing Customers to Outdated Systems",
-  "content": "# Hook [0:00-0:05] - Did you know 78% of customers abandon businesses with slow response times? Your competitors are already solving this. ## Problem [0:05-0:12] - Every minute of delay costs you $X in lost revenue and damages your reputation...",
-  "duration": "45 seconds"
+  "content": "# Hook [0:00-0:03] - ¿Alguna vez te ha pasado que pierdes clientes por sistemas lentos? ## Build-up [0:04-0:08] - Quieres crecer tu negocio pero siempre terminas perdiendo ventas por la tecnología obsoleta. ## Solution [0:09-0:20] - La buena noticia es que existe una forma distinta: automatización inteligente...",
+  "duration": "30 seconds"
 }
 `;
 	}
@@ -477,9 +477,9 @@ ${
 				case "tiktok":
 					return "15-30 seconds";
 				case "youtube":
-					return "45-60 seconds";
+					return "30-33 seconds";
 				default:
-					return "45-60 seconds";
+					return "30-33 seconds";
 			}
 		} else {
 			// Content scripts
@@ -552,22 +552,37 @@ ${
 	 */
 	private getAdScriptStructure(): string {
 		return `
-**AD SCRIPT STRUCTURE:**
-1. **Hook (0-5 seconds):** Impactful, disruptive opening that instantly connects with the audience's pain point or desire - use unexpected statistics, provocative questions, or emotional scenarios specific to the target audience
-2. **Problem Agitation (5-12 seconds):** Identify and amplify the specific pain point with relatable examples
-3. **Solution Introduction (12-20 seconds):** Present your unique solution with clear differentiation
-4. **Benefits & Proof (20-32 seconds):** Show tangible value, authority, testimonials, or results with specific numbers
-5. **Urgency & Scarcity (32-42 seconds):** Create compelling FOMO or time-sensitive offer
-6. **Strong Call to Action (42-45 seconds):** Clear, specific next step with urgency
+**AD SCRIPT STRUCTURE (Short Videos - Reels/TikTok/Ads):**
+1. **Hook / Initial Question (0:00-0:03):** Direct formula that stops the scroll:
+   - "¿Alguna vez te ha pasado que ___ (problema)?"
+   - "Seguro te suena familiar: ___ (situación común)."
+   - "La mayoría de personas hacen esto… y es un error."
+
+2. **Identification / Build-up (0:04-0:08):** Reinforce the pain or frustration:
+   - "Quieres ___ pero siempre terminas ___."
+   - "Todos buscan ___, pero casi nadie sabe que ___."
+
+3. **Solution / Value Proposition (0:09-0:20):** Introduce your proposal:
+   - "La buena noticia es que existe una forma distinta: ___."
+   - "Con ___ puedes lograr ___ sin tener que ___."
+
+4. **Benefits / Differentiator (0:21-0:27):** Brief and clear list:
+   - "Más rápido."
+   - "Más saludable."
+   - "Más efectivo."
+   - Or a mini testimonial / impactful visual (before vs after)
+
+5. **Call to Action (0:28-0:33):** Direct and clear according to objective:
+   - Organic: "Guarda este video para más tips." / "Síguenos para ver cómo hacerlo fácil."
+   - Ads: "Pide ahora por WhatsApp." / "Haz clic en el link y empieza hoy."
 
 **Key Elements to Include:**
-- Create a pattern-interrupt hook that's impossible to scroll past (use industry-specific challenges, counterintuitive facts, or emotional triggers)
 - Use the provided soundbite as a powerful statement that reinforces your unique value
 - Integrate the tagline naturally as a memorable reinforcement
 - Include specific social proof or authority markers relevant to your audience
 - Create emotional connection through storytelling elements
-- End with specific action ("Click the link", "DM us now", "Book your call today")
-- Keep total script length between 45-60 seconds maximum`;
+- Keep total script length between 30-33 seconds maximum
+- Focus on immediate scroll-stopping impact in the first 3 seconds`;
 	}
 
 	/**
