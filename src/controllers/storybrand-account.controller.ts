@@ -166,8 +166,6 @@ export async function adminDeleteUserAccountController(req: Request, res: Respon
     // For example, delete all brandscripts, businesses, content, etc.
     // You can use Promise.all to run these operations in parallel
     await Promise.all([
-      // Delete brandscripts
-      models.brandscript.deleteMany({ userId: userId }),
       // Delete businesses
       models.business.deleteMany({ userId: userId }),
       // Delete content
