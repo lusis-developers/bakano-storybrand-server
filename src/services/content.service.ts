@@ -455,14 +455,14 @@ ${
 {
   "title": "Concise script title (max 100 characters)",
   "content": "Full script content with clear sections and timing cues. Use line breaks and escape quotes properly.",
-  "duration": "Estimated duration (e.g., '60 seconds', '2-3 minutes')"
+  "duration": "Estimated duration (45-60 seconds maximum)"
 }
 
 **JSON VALIDATION EXAMPLE:**
 {
-  "title": "Transform Your Business Today",
-  "content": "# Hook [0:00-0:05] - Are you tired of struggling with problems? ## Problem [0:05-0:15] - Many businesses face challenges...",
-  "duration": "60 seconds"
+  "title": "Stop Losing Customers to Outdated Systems",
+  "content": "# Hook [0:00-0:05] - Did you know 78% of customers abandon businesses with slow response times? Your competitors are already solving this. ## Problem [0:05-0:12] - Every minute of delay costs you $X in lost revenue and damages your reputation...",
+  "duration": "45 seconds"
 }
 `;
 	}
@@ -477,9 +477,9 @@ ${
 				case "tiktok":
 					return "15-30 seconds";
 				case "youtube":
-					return "30-60 seconds";
+					return "45-60 seconds";
 				default:
-					return "30-60 seconds";
+					return "45-60 seconds";
 			}
 		} else {
 			// Content scripts
@@ -553,19 +553,21 @@ ${
 	private getAdScriptStructure(): string {
 		return `
 **AD SCRIPT STRUCTURE:**
-1. **Hook (0-5 seconds):** Attention-grabbing opening that stops the scroll
-2. **Problem Agitation (5-15 seconds):** Identify and amplify the pain point
-3. **Solution Introduction (15-25 seconds):** Present your solution as the answer
-4. **Benefits & Proof (25-40 seconds):** Show value, authority, testimonials, or results
-5. **Urgency & Scarcity (40-50 seconds):** Create FOMO or time-sensitive offer
-6. **Strong Call to Action (50-60 seconds):** Clear, specific next step with urgency
+1. **Hook (0-5 seconds):** Impactful, disruptive opening that instantly connects with the audience's pain point or desire - use unexpected statistics, provocative questions, or emotional scenarios specific to the target audience
+2. **Problem Agitation (5-12 seconds):** Identify and amplify the specific pain point with relatable examples
+3. **Solution Introduction (12-20 seconds):** Present your unique solution with clear differentiation
+4. **Benefits & Proof (20-32 seconds):** Show tangible value, authority, testimonials, or results with specific numbers
+5. **Urgency & Scarcity (32-42 seconds):** Create compelling FOMO or time-sensitive offer
+6. **Strong Call to Action (42-45 seconds):** Clear, specific next step with urgency
 
 **Key Elements to Include:**
-- Use the provided soundbite as a powerful statement
-- Integrate the tagline naturally
-- Include social proof or authority markers
-- Create emotional connection
-- End with specific action ("Click the link", "DM us now", "Book your call today")`;
+- Create a pattern-interrupt hook that's impossible to scroll past (use industry-specific challenges, counterintuitive facts, or emotional triggers)
+- Use the provided soundbite as a powerful statement that reinforces your unique value
+- Integrate the tagline naturally as a memorable reinforcement
+- Include specific social proof or authority markers relevant to your audience
+- Create emotional connection through storytelling elements
+- End with specific action ("Click the link", "DM us now", "Book your call today")
+- Keep total script length between 45-60 seconds maximum`;
 	}
 
 	/**
