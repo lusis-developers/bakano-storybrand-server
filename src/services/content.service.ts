@@ -455,7 +455,7 @@ ${
 {
   "title": "Concise script title (max 100 characters)",
   "content": "Full script content with clear sections and timing cues. Use line breaks and escape quotes properly.",
-  "duration": "Estimated duration (30-33 seconds maximum)"
+  "duration": "Estimated duration (45-60 seconds)"
 }
 
 **JSON VALIDATION EXAMPLE:**
@@ -475,11 +475,11 @@ ${
 			switch (platform) {
 				case "instagram":
 				case "tiktok":
-					return "15-30 seconds";
+					return "45-60 seconds";
 				case "youtube":
-					return "30-33 seconds";
+					return "45-60 seconds";
 				default:
-					return "30-33 seconds";
+					return "45-60 seconds";
 			}
 		} else {
 			// Content scripts
@@ -487,13 +487,13 @@ ${
 				case "instagram":
 				case "tiktok":
 				case "social":
-					return "60-90 seconds";
+					return "45-60 seconds";
 				case "youtube":
-					return "2-5 minutes";
+					return "45-60 seconds";
 				case "email":
-					return "1-2 minutes read time";
+					return "45-60 seconds";
 				default:
-					return "2-3 minutes";
+					return "45-60 seconds";
 			}
 		}
 	}
@@ -581,7 +581,7 @@ ${
 - Integrate the tagline naturally as a memorable reinforcement
 - Include specific social proof or authority markers relevant to your audience
 - Create emotional connection through storytelling elements
-- Keep total script length between 30-33 seconds maximum
+- Keep total script length between 45-60 seconds
 - Focus on immediate scroll-stopping impact in the first 3 seconds`;
 	}
 
