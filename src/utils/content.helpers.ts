@@ -27,17 +27,17 @@ export async function generateContentSoundbitesAndTaglines(
     tone
   );
 
-  // Filter and truncate soundbites that exceed 500 characters
+  // Filter and truncate soundbites that exceed 200 characters
   const soundbites = generatedContent.soundbites
     .filter(sb => sb.text && sb.text.trim().length > 0)
     .map(sb => {
       let text = sb.text.trim();
       
-      // Truncate if exceeds 500 characters, ensuring we don't cut words
-      if (text.length > 500) {
-        text = text.substring(0, 497);
+      // Truncate if exceeds 200 characters, ensuring we don't cut words
+      if (text.length > 200) {
+        text = text.substring(0, 197);
         const lastSpaceIndex = text.lastIndexOf(' ');
-        if (lastSpaceIndex > 450) {
+        if (lastSpaceIndex > 150) {
           text = text.substring(0, lastSpaceIndex);
         }
         text += '...';
@@ -49,7 +49,7 @@ export async function generateContentSoundbitesAndTaglines(
         selected: false
       };
     })
-    .filter(sb => sb.text.length <= 500); // Final safety check
+    .filter(sb => sb.text.length <= 200); // Final safety check
 
   const taglines = generatedContent.taglines.map(tl => ({
     text: tl.text,

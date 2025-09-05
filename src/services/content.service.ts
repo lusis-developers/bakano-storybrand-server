@@ -332,10 +332,9 @@ Generate 3 soundbites and 3 taglines that:
 - Match the specified tone
 
 **SOUNDBITES GUIDELINES:**
-- Primary: Core value proposition (up to 70 words or 500 characters)
-- Secondary: Supporting benefit (up to 50 words or 350 characters)
-- Supporting: Additional value point (up to 30 words or 200 characters)
-- Keep them compelling and complete thoughts
+- Primary: Core value proposition (15-25 words)
+- Secondary: Supporting benefit (10-20 words)
+- Supporting: Additional value point (8-15 words)
 
 **TAGLINES GUIDELINES:**
 - Catchy: Memorable and fun (3-8 words)

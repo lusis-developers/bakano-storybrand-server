@@ -114,7 +114,7 @@ const soundbiteSchema = new Schema({
     type: String,
     required: true,
     trim: true,
-    maxlength: [500, 'Soundbite cannot exceed 500 characters']
+    maxlength: [200, 'Soundbite cannot exceed 200 characters']
   },
   category: {
     type: String,
