@@ -578,7 +578,7 @@ export async function getScripts(req: AuthRequest, res: Response, next: NextFunc
     }
 
     // Apply filters to scripts
-    let scripts = content.scripts;
+    let scripts = content.scripts || [];
 
     // Filter by type
     if (type && ['content', 'ad'].includes(type as string)) {
@@ -586,7 +586,7 @@ export async function getScripts(req: AuthRequest, res: Response, next: NextFunc
     }
 
     // Filter by platform
-    if (platform && ['youtube', 'social', 'email', 'website'].includes(platform as string)) {
+    if (platform && ['youtube', 'instagram', 'tiktok', 'email', 'website', 'social'].includes(platform as string)) {
       scripts = scripts.filter(script => script.platform === platform);
     }
 
@@ -599,19 +599,47 @@ export async function getScripts(req: AuthRequest, res: Response, next: NextFunc
     // Filter by date range
     if (startDate || endDate) {
       scripts = scripts.filter(script => {
+        // Skip scripts without valid generatedAt date
+        if (!script.generatedAt) {
+          return false;
+        }
+        
         const scriptDate = new Date(script.generatedAt);
+        
+        // Skip scripts with invalid dates
+        if (isNaN(scriptDate.getTime())) {
+          return false;
+        }
         
         if (startDate && endDate) {
           const start = new Date(startDate as string);
           const end = new Date(endDate as string);
+          
+          // Validate input dates
+          if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+            return true; // Skip filtering if input dates are invalid
+          }
+          
           // Set end date to end of day
           end.setHours(23, 59, 59, 999);
           return scriptDate >= start && scriptDate <= end;
         } else if (startDate) {
           const start = new Date(startDate as string);
+          
+          // Validate input date
+          if (isNaN(start.getTime())) {
+            return true; // Skip filtering if input date is invalid
+          }
+          
           return scriptDate >= start;
         } else if (endDate) {
           const end = new Date(endDate as string);
+          
+          // Validate input date
+          if (isNaN(end.getTime())) {
+            return true; // Skip filtering if input date is invalid
+          }
+          
           // Set end date to end of day
           end.setHours(23, 59, 59, 999);
           return scriptDate <= end;
