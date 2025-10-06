@@ -18,7 +18,8 @@ export default function createApp() {
     "http://localhost:5174",
     "http://localhost:8101",
     "https://automatizations.bakano.ec",
-    "https://brand.bakano.ec"
+    "https://brand.bakano.ec",
+    "https://testing-storybrand-frontend.bakano.ec"
   ];
 
   const corsOptions = {
