@@ -1,4 +1,4 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { Schema, model, Document, Types, Model } from 'mongoose';
 
 export interface IIntegration extends Document {
   name: string;
@@ -9,6 +9,7 @@ export interface IIntegration extends Document {
     apiKey?: string;
     accessToken?: string;
     refreshToken?: string;
+    tokenExpiresAt?: Date;
     clientId?: string;
     clientSecret?: string;
     webhookUrl?: string;
@@ -26,6 +27,14 @@ export interface IIntegration extends Document {
   metadata?: Record<string, any>;
   createdAt: Date;
   updatedAt: Date;
+  // Virtuals
+  connectionStatus?: 'inactive' | 'disconnected' | 'error' | 'connected';
+}
+
+// Interface for static methods
+export interface IIntegrationModel extends Model<IIntegration> {
+  upsertMetaAccessToken(businessId: string | Types.ObjectId, accessToken: string, expiresIn: number): Promise<IIntegration>;
+  disconnectMeta(businessId: string | Types.ObjectId): Promise<IIntegration | null>;
 }
 
 const integrationSchema = new Schema<IIntegration>({
@@ -62,6 +71,9 @@ const integrationSchema = new Schema<IIntegration>({
     refreshToken: {
       type: String,
       select: false // Sensitive data, don't include by default
+    },
+    tokenExpiresAt: {
+      type: Date
     },
     clientId: {
       type: String,
@@ -166,9 +178,73 @@ integrationSchema.methods.updateLastSync = function() {
   return this.save();
 };
 
+// Static method to upsert Meta (Facebook) access token
+integrationSchema.statics.upsertMetaAccessToken = async function(
+  businessId: string | Types.ObjectId, 
+  accessToken: string, 
+  expiresIn: number
+): Promise<IIntegration> {
+  // Calculate expiration date
+  const tokenExpiresAt = new Date();
+  tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + expiresIn);
+  
+  // Find existing integration or create new one
+  const integration = await this.findOneAndUpdate(
+    { 
+      business: businessId, 
+      type: 'meta'
+    },
+    {
+      $set: {
+        name: 'Meta Integration',
+        type: 'meta',
+        business: businessId,
+        'config.accessToken': accessToken,
+        'config.tokenExpiresAt': tokenExpiresAt,
+        isActive: true,
+        isConnected: true,
+        lastSyncAt: new Date()
+      }
+    },
+    {
+      new: true,
+      upsert: true,
+      runValidators: true,
+      setDefaultsOnInsert: true
+    }
+  );
+  
+  return integration;
+};
+
+// Static method to disconnect Meta integration
+integrationSchema.statics.disconnectMeta = async function(
+  businessId: string | Types.ObjectId
+): Promise<IIntegration | null> {
+  const integration = await this.findOneAndUpdate(
+    { 
+      business: businessId, 
+      type: 'meta'
+    },
+    {
+      $set: {
+        isConnected: false,
+        'config.accessToken': null,
+        'config.refreshToken': null,
+        'config.tokenExpiresAt': null
+      }
+    },
+    {
+      new: true
+    }
+  );
+  
+  return integration;
+};
+
 integrationSchema.set('toJSON', { virtuals: true });
 integrationSchema.set('toObject', { virtuals: true });
 
-export const Integration = model<IIntegration>('Integration', integrationSchema);
+export const Integration = model<IIntegration, IIntegrationModel>('Integration', integrationSchema);
 
 export default Integration;
