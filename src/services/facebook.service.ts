@@ -12,6 +12,27 @@ export interface FacebookServiceConfig {
   appSecret: string;
 }
 
+export interface PageInfo {
+  id: string;
+  name: string;
+  access_token: string;
+  category: string;
+  tasks: string[];
+  picture: {
+    data: {
+      url: string;
+    }
+  }
+}
+
+export interface PagePost {
+  id: string;
+  created_time: string;
+  message?: string;
+  full_picture?: string;
+  permalink_url: string;
+}
+
 export class FacebookService {
   private readonly config: FacebookServiceConfig;
 
@@ -71,7 +92,46 @@ export class FacebookService {
       throw new Error(error?.response?.data?.error?.message || 'Error al intercambiar token en Facebook');
     }
   }
+
+  async getUserPages(userAccessToken: string): Promise<PageInfo[]> {
+    console.log('[FacebookService] obteniendo pagina del usuario...');
+    const url  = this.graphUrl('/me/accounts');
+
+    const params = {
+      fields: 'id,name,access_token,category,tasks,picture{url}',
+      access_token: userAccessToken,
+    }
+
+    try {
+      const response = await axios.get<({data: PageInfo[]})>(url, {params})
+      return response.data.data;
+    } catch (error: any) {
+      const fbError = error?.response?.data || error?.message;
+      console.error('[FacebookService] Error en el intercambio de token:', fbError);
+      throw new Error(error?.response?.data?.error?.message || 'Error al obtener paginas en Facebook');
+    }
+  }
+
+
+  async getPagePosts(pageAccessToken: string, pageId: string, limit: number = 10): Promise<PagePost[]> {
+    console.log(`[FacebookService] Obteniendo las últimas ${limit} publicaciones de la página ${pageId}...`);
+    const url = this.graphUrl(`/${pageId}/posts`);
+    const params = {
+      fields: 'id,created_time,message,full_picture,permalink_url',
+      limit,
+      access_token: pageAccessToken,
+    };
+
+    try {
+      const response = await axios.get<{ data: PagePost[] }>(url, { params });
+      console.log(`[FacebookService] ✅ Se obtuvieron ${response.data.data.length} publicaciones.`);
+      return response.data.data;
+    } catch (error: any) {
+      const fbError = error?.response?.data || error?.message;
+      console.error(`[FacebookService] Error al obtener las publicaciones de la página ${pageId}:`, fbError);
+      throw new Error(error?.response?.data?.error?.message || 'Error al obtener las publicaciones de Facebook');
+    }
+  }
 }
 
-// Instancia por defecto usando variables de entorno o valores proporcionados
 export const facebookService = new FacebookService();
