@@ -33,6 +33,21 @@ export interface PagePost {
   permalink_url: string;
 }
 
+type InsightValue = {
+  value: any;
+  end_time?: string;
+};
+
+type InsightMetric = {
+  name: string;
+  period: string;
+  values: InsightValue[];
+  title?: string;
+  description?: string;
+  id?: string;
+};
+
+
 export class FacebookService {
   private readonly config: FacebookServiceConfig;
 
@@ -130,6 +145,96 @@ export class FacebookService {
       const fbError = error?.response?.data || error?.message;
       console.error(`[FacebookService] Error al obtener las publicaciones de la página ${pageId}:`, fbError);
       throw new Error(error?.response?.data?.error?.message || 'Error al obtener las publicaciones de Facebook');
+    }
+  }
+
+
+  /**
+   * Obtiene las estadísticas (insights) para una lista de publicaciones usando una petición por lotes (batch request).
+   * Maneja métricas válidas en posts y añade period para métricas con restricciones.
+   * @param pageAccessToken Token de acceso de la Página (con permisos read_insights y pages_read_engagement, y tarea ANALYZE).
+   * @param postIds IDs de las publicaciones (formato {pageId}_{postId}).
+   * @param options Opcional: period, since, until.
+   * @returns Un Map donde la clave es el ID de la publicación y el valor es un objeto con sus estadísticas.
+   */
+ async getPostsInsights(pageAccessToken: string, postIds: string[]): Promise<Map<string, any>> {
+    console.log(`[FacebookService] 📊 Obteniendo insights para ${postIds.length} publicaciones...`);
+
+    // --- LISTA DE MÉTRICAS REFINADA Y DIVIDIDA POR 'PERIOD' ---
+    const lifetimeMetrics = ['post_reactions_by_type_total'];
+    const dailyMetrics = [
+      'post_impressions', 
+      'post_impressions_unique', 
+      'post_engaged_users', 
+      'post_video_views'
+    ];
+
+    // Construimos la petición por lotes. Cada post tendrá dos sub-peticiones: una para métricas 'lifetime' y otra para 'daily'.
+    const batchRequests: { method: 'GET', relative_url: string, postId: string }[] = [];
+    postIds.forEach(postId => {
+      // Sub-petición para métricas de por vida
+      batchRequests.push({
+        method: 'GET',
+        relative_url: `${this.config.apiVersion}/${postId}/insights?metric=${lifetimeMetrics.join(',')}&period=lifetime`,
+        postId: postId
+      });
+      // Sub-petición para métricas diarias (la API las suma si no se especifica 'since'/'until')
+      batchRequests.push({
+        method: 'GET',
+        relative_url: `${this.config.apiVersion}/${postId}/insights?metric=${dailyMetrics.join(',')}&period=day`,
+        postId: postId
+      });
+    });
+
+    const url = `https://graph.facebook.com/${this.config.apiVersion}`;
+    const params = {
+      access_token: pageAccessToken,
+      batch: JSON.stringify(batchRequests.map(req => ({ method: req.method, relative_url: req.relative_url }))),
+    };
+
+    try {
+      const response = await axios.post<any[]>(url, null, { params });
+      const insightsMap = new Map<string, any>();
+
+      // Procesamos y fusionamos los resultados de las sub-peticiones
+      response.data.forEach((result, index) => {
+        const { postId } = batchRequests[index];
+        
+        if (result && result.code === 200) {
+          const body = JSON.parse(result.body);
+          if (body.data && body.data.length > 0) {
+            
+            // Inicializamos el objeto de insights para este post si no existe
+            if (!insightsMap.has(postId)) {
+              insightsMap.set(postId, {});
+            }
+            const postInsights = insightsMap.get(postId);
+
+            // Fusionamos los resultados en el objeto
+            body.data.forEach((metric: any) => {
+              if (metric.values && metric.values.length > 0) {
+                // Para métricas diarias, sumamos los valores si hay varios días
+                if (metric.period === 'day') {
+                  postInsights[metric.name] = metric.values.reduce((sum: number, day: any) => sum + (day.value || 0), 0);
+                } else { // Para lifetime, tomamos el primer valor
+                  postInsights[metric.name] = metric.values[0].value;
+                }
+              }
+            });
+          }
+        } else {
+          const errorBody = result ? JSON.parse(result.body) : { error: { message: 'Respuesta desconocida' } };
+          console.warn(`[FacebookService] ⚠️ Falló sub-petición para post ${postId}:`, errorBody.error.message);
+        }
+      });
+
+      console.log(`[FacebookService] ✅ Insights obtenidos para ${insightsMap.size} de ${postIds.length} publicaciones.`);
+      return insightsMap;
+    } catch (error: any) {
+      const fbError = error?.response?.data || error?.message;
+      console.error(`[FacebookService] Error al obtener insights por lotes:`, fbError);
+      // Importante: no retornes el mensaje crudo; normaliza
+      throw new Error(error?.response?.data?.error?.message || 'Error al obtener insights de Facebook');
     }
   }
 }
