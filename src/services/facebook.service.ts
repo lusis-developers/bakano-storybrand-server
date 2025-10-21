@@ -148,6 +148,23 @@ export class FacebookService {
     }
   }
 
+  async getPageDetails(pageAccessToken: string, pageId: string): Promise<{ id: string; name: string }> {
+    console.log(`[FacebookService] Obteniendo detalles de la página ${pageId}...`);
+    const url = this.graphUrl(`/${pageId}`);
+    const params = {
+      fields: 'id,name',
+      access_token: pageAccessToken,
+    };
+
+    try {
+      const response = await axios.get<{ id: string; name: string }>(url, { params });
+      return response.data;
+    } catch (error: any) {
+      const fbError = error?.response?.data || error?.message;
+      console.error(`[FacebookService] Error al obtener detalles de la página ${pageId}:`, fbError);
+      throw new Error(error?.response?.data?.error?.message || 'Error al obtener detalles de la página en Facebook');
+    }
+  }
 
   /**
    * Obtiene las estadísticas (insights) para una lista de publicaciones usando una petición por lotes (batch request).
