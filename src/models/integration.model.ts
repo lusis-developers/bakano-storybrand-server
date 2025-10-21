@@ -166,12 +166,14 @@ integrationSchema.statics.finalizeWithPageToken = async function(
     },
     {
       $set: {
-        name: `Meta Page: ${pageName}`,
+        name: `Instagram (via Meta): ${pageName}`,
+        description: 'Instagram Business (via Meta)',
         'config.accessToken': pageAccessToken, // The final PAGE token
         'config.tokenExpiresAt': null, // Page tokens generally don't expire
         isConnected: true, // Connection is now complete and active
         'metadata.pageId': pageId,
         'metadata.pageName': pageName,
+        'metadata.platform': 'instagram',
         'metadata.status': 'connected',
         lastSyncAt: new Date()
       }
