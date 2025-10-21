@@ -5,7 +5,10 @@ import businessRouter from './business.route';
 import contentRouter from './content.route';
 import onboardingRouter from './onboarding.router';
 import storybrandAccountRouter from './storybrand-account.route';
-import integrationRouter from './integrations/facebook.route'
+import facebookRouter from './integrations/facebook.route'
+import instagramRouter from './integrations/instagram.route'
+
+
 
 function routerApi(app: Application) {
   const router = express.Router();
@@ -17,7 +20,8 @@ function routerApi(app: Application) {
   router.use("/content", contentRouter);
   router.use("/onboarding", onboardingRouter);
   router.use("/storybrand-account", storybrandAccountRouter);
-  router.use("/integrations/facebook", integrationRouter)
+  router.use("/integrations/facebook", facebookRouter)
+  router.use("/integrations/instagram", instagramRouter)
 }
 
 export default routerApi;
