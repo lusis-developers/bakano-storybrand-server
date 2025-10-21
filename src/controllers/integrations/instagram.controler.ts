@@ -6,11 +6,12 @@ import { Integration } from "../../models/integration.model";
 import { Business } from "../../models/business.model";
 import { facebookService } from "../../services/facebook.service";
 import { instagramService } from "../../services/instagram.service";
+import { Types } from "mongoose";
 
 // Controlador: obtener páginas (con IG Business) que el usuario tiene acceso según su token de USUARIO (EAA...)
 export async function instagramConnectController(req: Request, res: Response, next: NextFunction) {
   try {
-    const { accessToken } = req.body || {};
+    const { accessToken, business } = req.body || {};
     if (!accessToken) {
       return next(new CustomError(
         "Missing required parameter: accessToken",
@@ -18,12 +19,38 @@ export async function instagramConnectController(req: Request, res: Response, ne
       ));
     }
 
-    const accounts: LinkedInstagramAccount[] = await listLinkedInstagramAccounts(accessToken);
+    // Intercambiar el token corto por long-lived para evitar caducidad temprana
+    let longLivedUserToken: string = accessToken;
+    let expiresInSeconds: number | undefined;
+    let expiresAt: Date | undefined;
+    try {
+      const exchange = await facebookService.exchangeLongLivedUserAccessToken(accessToken);
+      longLivedUserToken = exchange.access_token;
+      expiresInSeconds = exchange.expires_in || 5184000; // ~60 días
+      expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+
+      // Si viene el business, persistimos el token de usuario long-lived en la integración con estado "pending"
+      if (business) {
+        await Integration.upsertUserToken(business, longLivedUserToken, expiresInSeconds);
+      }
+    } catch (e) {
+      console.warn('[instagramConnectController] No se pudo intercambiar el token de usuario por long-lived, se usará el recibido. Esto puede caducar pronto:', (e as Error).message);
+    }
+
+    // Usar el token long-lived (o el original si falló el intercambio) para listar las páginas con IG
+    const accounts: LinkedInstagramAccount[] = await listLinkedInstagramAccounts(longLivedUserToken);
 
     return res.status(HttpStatusCode.Ok).send({
       message: "Linked Instagram Business accounts fetched successfully",
       accounts,
-      count: accounts.length
+      count: accounts.length,
+      // Exponemos información de expiración para diagnóstico; puedes remover `token` si no quieres retornarlo
+      token: {
+        type: 'user_long_lived',
+        accessToken: longLivedUserToken,
+        expiresIn: expiresInSeconds,
+        expiresAt
+      }
     });
   } catch (error) {
     next(error);
