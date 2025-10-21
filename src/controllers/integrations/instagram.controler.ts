@@ -6,9 +6,7 @@ import { Integration } from "../../models/integration.model";
 import { Business } from "../../models/business.model";
 import { facebookService } from "../../services/facebook.service";
 import { instagramService } from "../../services/instagram.service";
-import { Types } from "mongoose";
 
-// Controlador: obtener páginas (con IG Business) que el usuario tiene acceso según su token de USUARIO (EAA...)
 export async function instagramConnectController(req: Request, res: Response, next: NextFunction) {
   try {
     const { accessToken, business } = req.body || {};
