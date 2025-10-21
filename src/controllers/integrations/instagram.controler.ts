@@ -185,15 +185,24 @@ export async function getinstagramPostsController(req: Request, res: Response, n
       return next(new CustomError("Missing page access token in integration config", HttpStatusCode.BadRequest));
     }
 
-    // Llamar al servicio de Instagram para obtener las últimas publicaciones
+
     const posts = await instagramService.getUserMedia(igUserId, pageAccessToken, limit);
 
-    return res.status(HttpStatusCode.Ok).send({
-      message: "Instagram posts fetched successfully",
+    const postIds = posts.map(post => post.id);
+
+    const insightsMap = await instagramService.getMultipleMediaInsights(postIds, pageAccessToken);
+    
+    const postsWithInsights = posts.map(post => ({
+      ...post, // El post original (con id, caption, like_count, comments_count...)
+      insights: insightsMap.get(post.id) || null // El objeto de insights (engagement, reach...)
+    }));
+
+   return res.status(HttpStatusCode.Ok).send({
+      message: "Instagram posts and insights fetched successfully",
       businessId,
-      count: posts.length,
+      count: postsWithInsights.length,
       limit,
-      posts
+      posts: postsWithInsights // <-- Enviamos el array enriquecido
     });
   } catch (error) {
     next(error);
