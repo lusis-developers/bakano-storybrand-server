@@ -18,9 +18,22 @@ export interface InstagramMediaItem {
   };
 }
 
+export interface InstagramAccountStats {
+  username: string;
+  follower_count: number;
+  impressions: number;
+  reach: number;
+  profile_views: number;
+  period: {
+    since: string;
+    until: string;
+    days: number;
+  };
+}
+
 export class InstagramService {
   private readonly apiBase = 'https://graph.facebook.com';
-  private readonly apiVersion = 'v21.0';
+  private readonly apiVersion = process.env.FACEBOOK_API_VERSION || 'v24.0';
 
   /**
    * Fetch latest media for an Instagram Business account (igUserId)
