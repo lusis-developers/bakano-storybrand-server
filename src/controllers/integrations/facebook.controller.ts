@@ -4,6 +4,7 @@ import models from "../../models";
 import { HttpStatusCode } from "axios";
 import CustomError from "../../errors/customError.error";
 import { Types } from "mongoose";
+import { facebookPostService } from "../../services/facebookPost.service";
 
 /**
  * Handles the first step of Facebook connection:
@@ -214,5 +215,56 @@ export async function createPostController(req: Request, res: Response, next: Ne
   } catch (error: any) {
     console.error('[CreatePostController] ❌ Error in createPostController:', error?.response?.data || error?.message);
     next(error);
+  }
+}
+
+export async function createFacebookPhotoPostController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  // Siempre dentro de un try...catch
+  try {
+    // 1. OBTENER Y VALIDAR ENTRADA
+    const { businessId } = req.params;
+    
+    // Los archivos vienen de req.files gracias al middleware 'multer'
+    const files = req.files as Express.Multer.File[]; 
+
+    // Validamos el businessId
+    if (!businessId || !Types.ObjectId.isValid(businessId)) {
+      // Pasamos el error al middleware con next()
+      return next(new CustomError(
+        "Invalid or missing businessId parameter", 
+        HttpStatusCode.BadRequest
+      ));
+    }
+    
+    // Validamos que multer nos haya entregado archivos
+    if (!files || files.length === 0) {
+      return next(new CustomError(
+        "No image files were uploaded. Ensure the field name in FormData is 'images'.", 
+        HttpStatusCode.BadRequest
+      ));
+    }
+
+    // 2. DELEGAR AL SERVICIO ORQUESTADOR
+    // El controlador no sabe nada de Cloudinary, modelos, ni lógica de Facebook.
+    // Solo pasa la información validada al servicio que SÍ sabe.
+    console.log(`[FBPhotoController] Delegando la publicación de ${files.length} foto(s) al servicio...`);
+    const result = await facebookPostService.publishPhotoPost(
+      businessId, 
+      req.body, // Pasamos todo el body (el servicio extraerá message, published, etc.)
+      files      // Pasamos los archivos
+    );
+    console.log(`[FBPhotoController] Servicio completó la publicación tipo: ${result.type}`);
+
+    // 3. ENVIAR RESPUESTA ÉXITOSA (201 Created)
+    res.status(HttpStatusCode.Created).send({
+      message: `Facebook ${result.type} post created successfully`, // Mensaje dinámico (photo o carousel)
+      data: result.data // Los IDs devueltos por Facebook
+    });
+
+  } catch (error: any) {
+    // Si facebookPostService (o la validación inicial) lanza un error, lo capturamos aquí.
+    console.error('[CreateFacebookPhotoPostController] ❌ Error en el flujo:', error.message);
+    // Pasamos el error al middleware global para que maneje la respuesta de error (4xx o 500)
+    next(error); 
   }
 }
