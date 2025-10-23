@@ -268,3 +268,39 @@ export async function createFacebookPhotoPostController(req: Request, res: Respo
     next(error); 
   }
 }
+
+export async function createFacebookVideoPostController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { businessId } = req.params;
+
+    // 1. INPUT VALIDATION
+    // Multer (with .single('video')) will place the file in req.file
+    const file = req.file as Express.Multer.File | undefined;
+
+    // Validate businessId
+    if (!businessId || !Types.ObjectId.isValid(businessId)) {
+      return next(new CustomError("Invalid or missing businessId", HttpStatusCode.BadRequest));
+    }
+
+    // Validate that multer provided ONE file
+    if (!file) {
+      return next(new CustomError("No video file provided in 'video' field", HttpStatusCode.BadRequest));
+    }
+
+    // 2. DELEGATE TO SERVICE
+    const result = await facebookPostService.publishVideoPost(
+      businessId,
+      req.body, // Pass body (description, title, published, etc.)
+      file      // Pass file
+    );
+
+    // 3. SEND SUCCESS RESPONSE (201 Created)
+    res.status(HttpStatusCode.Created).send({
+      message: `Facebook ${result.type} post created successfully`,
+      data: result.data // Contains { video_id: "..." }
+    });
+
+  } catch (error: any) {
+    next(error); // Pass to error middleware
+  }
+}
