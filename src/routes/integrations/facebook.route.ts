@@ -1,5 +1,5 @@
 import express from "express"
-import { createFacebookPhotoPostController, createPostController, facebookConnectController, facebookSavePageController, getFacebookPostsController } from "../../controllers/integrations/facebook.controller"
+import { createFacebookPhotoPostController, createFacebookVideoPostController, createPostController, facebookConnectController, facebookSavePageController, getFacebookPostsController } from "../../controllers/integrations/facebook.controller"
 
 import multer from "multer";
 
@@ -17,5 +17,11 @@ router.post('/posts/:businessId', getFacebookPostsController)
 router.post('/post/publish/text/:businessId', createPostController)
 
 router.post('/post/publish/photo/:businessId', uploadMemory.array('images', 10), createFacebookPhotoPostController)
+
+router.post(
+  '/post/publish/video/:businessId',
+  uploadMemory.single('video'),
+  createFacebookVideoPostController
+);
 
 export default router
