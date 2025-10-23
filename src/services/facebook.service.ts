@@ -46,15 +46,33 @@ export interface CreatePostResponse {
 }
 
 export interface CreatePhotoPayload {
-  url: string;      // URL pública de la imagen
-  message?: string; // El texto que acompaña a la foto (el 'caption')
-  published?: boolean;
-  scheduled_publish_time?: number | string;
+	url: string; // URL pública de la imagen
+	message?: string; // El texto que acompaña a la foto (el 'caption')
+	published?: boolean;
+	scheduled_publish_time?: number | string;
 }
 
 export interface CreatePhotoResponse {
-  id: string;       // El ID del objeto 'photo'
-  post_id: string;  // El ID de la publicación ('page_post_id')
+	id: string; // El ID del objeto 'photo'
+	post_id: string; // El ID de la publicación ('page_post_id')
+}
+
+export interface CarouselPostPayload {
+	message?: string;
+	// Array de objetos { media_fbid: "ID_DE_FOTO_1" }
+	attached_media: { media_fbid: string }[];
+}
+
+export interface UnpublishedPhotoPayload {
+	url: string;
+	message?: string;
+}
+export interface UnpublishedPhotoResponse {
+	id: string;
+} // Este es el media_fbid
+export interface CarouselPostPayload {
+	message?: string;
+	attached_media: { media_fbid: string }[];
 }
 
 export class FacebookService {
@@ -80,7 +98,9 @@ export class FacebookService {
 	}
 
 	private graphUrl(path: string): string {
-		return `https://graph.facebook.com/${this.config.apiVersion}${path}`;
+		return `https://graph.facebook.com/${this.config.apiVersion}${
+			path.startsWith("/") ? path : "/" + path
+		}`;
 	}
 
 	/**
@@ -357,84 +377,167 @@ export class FacebookService {
 		}
 	}
 
-  async createPagePost(
-    pageAccessToken: string,
-    pageId: string,
-    payload: CreatePostPayload
-  ): Promise<CreatePostResponse> {
-    console.log('[FacebookService] 📝 Creando publicación en la página: ', pageId);
+	async createPagePost(
+		pageAccessToken: string,
+		pageId: string,
+		payload: CreatePostPayload
+	): Promise<CreatePostResponse> {
+		console.log(
+			"[FacebookService] 📝 Creando publicación en la página: ",
+			pageId
+		);
 
-    const url = this.graphUrl(`/ ${pageId}/feed`);
+		const url = this.graphUrl(`/ ${pageId}/feed`);
 
-    const params = {
-      ...payload,
-      access_token: pageAccessToken
-    }
+		const params = {
+			...payload,
+			access_token: pageAccessToken,
+		};
 
-    console.log('[FacebookService] 📝 Parámetros de la solicitud: ', params)
-    
-    try {
+		console.log(
+			"[FacebookService] 📝 Parámetros de la solicitud: ",
+			params
+		);
 
-      const response = await axios.post<CreatePostResponse>(url, null, { params });
-      
-      console.log(`[FacebookService] ✅ Publicación creada con ID: ${response.data.id}`);
-      return response.data;
+		try {
+			const response = await axios.post<CreatePostResponse>(url, null, {
+				params,
+			});
 
-    } catch (error: any) {
-      const fbError = error?.response?.data || error?.message;
-      console.error(`[FacebookService] ❌ Error al crear la publicación en la página ${pageId}:`, fbError);
-      // Normalizamos el error para que el controlador lo capture
-      throw new Error(error?.response?.data?.error?.message || 'Error al crear la publicación en Facebook');
-    }
-    
-    
+			console.log(
+				`[FacebookService] ✅ Publicación creada con ID: ${response.data.id}`
+			);
+			return response.data;
+		} catch (error: any) {
+			const fbError = error?.response?.data || error?.message;
+			console.error(
+				`[FacebookService] ❌ Error al crear la publicación en la página ${pageId}:`,
+				fbError
+			);
+			// Normalizamos el error para que el controlador lo capture
+			throw new Error(
+				error?.response?.data?.error?.message ||
+					"Error al crear la publicación en Facebook"
+			);
+		}
+	}
 
-  }
+	async createPagePhotoPost(
+		// Para Foto Única
+		pageAccessToken: string,
+		pageId: string,
+		payload: CreatePhotoPayload
+	): Promise<CreatePhotoResponse> {
+		console.log(
+			`[FacebookService] 🖼️ Creando publicación de FOTO ÚNICA...`
+		);
+		const url = this.graphUrl(`/${pageId}/photos`); // Ya tenía la barra inicial correcta
+		const params = { ...payload, access_token: pageAccessToken };
+		try {
+			const response = await axios.post<CreatePhotoResponse>(url, null, {
+				params,
+			});
+			console.log(
+				`[FacebookService] ✅ Publicación FOTO ÚNICA creada con post_id: ${response.data.post_id}`
+			);
+			return response.data;
+		} catch (error: any) {
+			// ... (manejo de error existente) ...
+			const fbError = error?.response?.data || error?.message;
+			console.error(
+				`[FacebookService] ❌ Error al crear publicación FOTO ÚNICA:`,
+				fbError
+			);
+			throw new Error(
+				error?.response?.data?.error?.message ||
+					"Error al crear la publicación de foto en Facebook"
+			);
+		}
+	}
 
-  /**
-   * =================================================================
-   * NUEVO MÉTODO (PARA FOTOS)
-   * =================================================================
-   * Publica una FOTO en una Página de Facebook.
-   * Corresponde a: POST /{page_id}/photos
-   *
-   * @param pageAccessToken Token de acceso de la Página.
-   * @param pageId El ID de la Página donde se publicará.
-   * @param payload Objeto con los datos del post (url de la foto, message)
-   * @returns Los IDs de la foto y de la publicación.
-   */
-  async createPagePhotoPost(
-    pageAccessToken: string,
-    pageId: string,
-    payload: CreatePhotoPayload
-  ): Promise<CreatePhotoResponse> {
-    
-    console.log(`[FacebookService] 🖼️ Creando publicación de FOTO en la página ${pageId}...`);
-    
-    // Apuntamos al endpoint /photos
-    const url = this.graphUrl(`/${pageId}/photos`);
+	async uploadUnpublishedPhoto(
+		pageAccessToken: string,
+		pageId: string,
+		payload: UnpublishedPhotoPayload
+	): Promise<UnpublishedPhotoResponse> {
+		console.log(
+			`[FacebookService] 🗂️ Subiendo foto no publicada para carrusel...`
+		);
+		const url = this.graphUrl(`/${pageId}/photos`);
+		// Clave: published=false
+		const params = {
+			...payload,
+			published: false,
+			access_token: pageAccessToken,
+		};
+		try {
+			const response = await axios.post<UnpublishedPhotoResponse>(
+				url,
+				null,
+				{ params }
+			);
+			console.log(
+				`[FacebookService] ✅ Foto no publicada subida con ID (media_fbid): ${response.data.id}`
+			);
+			return response.data; // Devuelve { id: "media_fbid" }
+		} catch (error: any) {
+			const fbError = error?.response?.data || error?.message;
+			console.error(
+				`[FacebookService] ❌ Error al subir foto no publicada:`,
+				fbError
+			);
+			throw new Error(
+				error?.response?.data?.error?.message ||
+					"Error al subir foto no publicada para carrusel"
+			);
+		}
+	}
 
-    // El payload (que contiene 'url' y 'message') se pasa como 'params'
-    const params = {
-      ...payload,
-      access_token: pageAccessToken,
-    };
-
-    // Logueamos los parámetros sin el token por seguridad
-    console.log('[FacebookService] Publicando FOTO con payload:', payload);
-
-    try {
-      const response = await axios.post<CreatePhotoResponse>(url, null, { params });
-      
-      console.log(`[FacebookService] ✅ Publicación de FOTO creada con post_id: ${response.data.post_id}`);
-      return response.data;
-
-    } catch (error: any) {
-      const fbError = error?.response?.data || error?.message;
-      console.error(`[FacebookService] ❌ Error al crear la publicación de FOTO en la página ${pageId}:`, fbError);
-      throw new Error(error?.response?.data?.error?.message || 'Error al crear la publicación de foto en Facebook');
-    }
-  }
+	/**
+	 * =================================================================
+	 * MÉTODO NUEVO (PARA CARRUSELES - PASO 2)
+	 * =================================================================
+	 * Publica un post en el FEED adjuntando los IDs ('media_fbid') de las fotos.
+	 */
+	async publishCarouselPost(
+		pageAccessToken: string,
+		pageId: string,
+		payload: CarouselPostPayload
+	): Promise<CreatePostResponse> {
+		// Devuelve solo el ID del post final
+		console.log(`[FacebookService] 🎠 Creando publicación de CARRUSEL...`);
+		// Se publica en el endpoint /feed, no /photos
+		const url = this.graphUrl(`/${pageId}/feed`);
+		// Clave: attached_media como string JSON
+		const params = {
+			message: payload.message,
+			attached_media: JSON.stringify(payload.attached_media),
+			access_token: pageAccessToken,
+		};
+		console.log("[FacebookService] Publicando CARRUSEL con payload:", {
+			message: payload.message,
+			num_media: payload.attached_media.length,
+		});
+		try {
+			const response = await axios.post<CreatePostResponse>(url, null, {
+				params,
+			});
+			console.log(
+				`[FacebookService] ✅ Carrusel creado con post_id: ${response.data.id}`
+			);
+			return response.data; // Devuelve { id: "post_id" }
+		} catch (error: any) {
+			const fbError = error?.response?.data || error?.message;
+			console.error(
+				`[FacebookService] ❌ Error al crear el carrusel:`,
+				fbError
+			);
+			throw new Error(
+				error?.response?.data?.error?.message ||
+					"Error al crear el post de carrusel"
+			);
+		}
+	}
 }
 
 export const facebookService = new FacebookService();
