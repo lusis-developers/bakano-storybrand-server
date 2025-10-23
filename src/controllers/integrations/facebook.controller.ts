@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from "express";
-import { facebookService } from "../../services/facebook.service";
+import { CreatePostPayload, facebookService } from "../../services/facebook.service";
 import models from "../../models";
 import { HttpStatusCode } from "axios";
 import CustomError from "../../errors/customError.error";
+import { Types } from "mongoose";
 
 /**
  * Handles the first step of Facebook connection:
@@ -145,5 +146,73 @@ export async function getFacebookPostsController(req: Request, res: Response, ne
   } catch (error: any) {
     console.error('[GetFacebookPostsController] ❌ Error in getFacebookPostsController:', error?.response?.data || error?.message);
     res.status(500).send({ message: 'Error retrieving Facebook posts' });
+  }
+}
+
+export async function createPostController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+
+    const { businessId } = req.params;
+    
+    const {
+      message,
+      link, 
+      published,
+      scheduled_publish_time
+    } = req.body as CreatePostPayload
+
+    if (!businessId || !Types.ObjectId.isValid(businessId)) {
+      return next(new CustomError(
+       "Invalid or missing businessId parameter", 
+        HttpStatusCode.BadRequest
+      ));
+    }
+
+    if(!message) {
+      return next(new CustomError(
+        "missing required body field: message", 
+        HttpStatusCode.BadRequest
+      ))
+    }
+
+    const integration = await models.integration.findOne({ 
+      business: businessId, 
+      type: 'meta',
+      isConnected: true 
+    }).select('+config.accessToken');
+
+    if (!integration || !integration.config.accessToken || !integration.metadata?.pageId) {
+      return next(new CustomError(
+        'Active Facebook integration not found or is incomplete for this business', 
+        HttpStatusCode.NotFound
+      ));
+    }
+
+    const pageAccessToken = integration.config.accessToken;
+    const pageId = integration.metadata.pageId;
+
+    // 3. PREPARAR Y LLAMAR AL SERVICIO
+    const payload: CreatePostPayload = {
+      message,
+      link,
+      published,
+      scheduled_publish_time
+    };
+
+    const newPost = await facebookService.createPagePost(
+      pageAccessToken,
+      pageId,
+      payload
+    );
+
+    // 4. RESPONDER
+    res.status(HttpStatusCode.Created).send({
+      message: "Facebook text post created successfully",
+      data: newPost
+    });
+
+  } catch (error: any) {
+    console.error('[CreatePostController] ❌ Error in createPostController:', error?.response?.data || error?.message);
+    next(error);
   }
 }
