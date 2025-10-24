@@ -75,6 +75,18 @@ export interface CarouselPostPayload {
 	attached_media: { media_fbid: string }[];
 }
 
+export interface CreateVideoPayload {
+    file_url: string; // URL pública del video (de Cloudinary)
+    description?: string;
+    title?: string;
+    published?: boolean; // Para programar
+    scheduled_publish_time?: number | string;
+}
+export interface CreateVideoResponse {
+    id: string; // La API devuelve el ID del video subido
+    // post_id?: string; // El ID del post puede no devolverse inmediatamente
+}
+
 export class FacebookService {
 	private readonly config: FacebookServiceConfig;
 
@@ -538,6 +550,56 @@ export class FacebookService {
 			);
 		}
 	}
+
+	/**
+   * =============================================================
+   * MÉTODO NUEVO (PARA VIDEOS - Publicación simple con URL)
+   * =============================================================
+   * Publica un VIDEO en una Página de Facebook usando una URL pública.
+   * Corresponde a: POST /{page_id}/videos con 'file_url'
+   * * @param pageAccessToken Token de la Página.
+   * @param pageId ID de la Página.
+   * @param payload Datos del video (file_url, description, etc.)
+   * @returns El ID del video creado.
+   */
+  async createPageVideoPost(
+    pageAccessToken: string,
+    pageId: string,
+    payload: CreateVideoPayload 
+  ): Promise<CreateVideoResponse> { // <-- Usa la nueva interfaz de respuesta
+    
+    console.log(`[FacebookService] 🎬 Creando publicación de VIDEO en la página ${pageId} desde URL...`);
+    
+    // Apuntamos al endpoint /videos
+    const url = this.graphUrl(`/${pageId}/videos`);
+
+    // El payload (file_url, description) se pasa como 'params'
+    const params = {
+      ...payload, // Incluye file_url, description, title, published, etc.
+      access_token: pageAccessToken,
+    };
+
+    console.log('[FacebookService] Publicando VIDEO con payload:', { 
+        file_url: payload.file_url, 
+        description: payload.description,
+        title: payload.title 
+    });
+
+    try {
+      // Hacemos el POST a /videos
+      const response = await axios.post<CreateVideoResponse>(url, null, { params });
+      
+      // La respuesta de la API de video solo suele dar el ID del video
+      console.log(`[FacebookService] ✅ Video subido/publicado con ID: ${response.data.id}`);
+      // Nota: Facebook procesa el video en segundo plano. El post puede tardar en aparecer.
+      return { id: response.data.id };
+
+    } catch (error: any) {
+      const fbError = error?.response?.data || error?.message;
+      console.error(`[FacebookService] ❌ Error al crear la publicación de VIDEO:`, fbError);
+      throw new Error(error?.response?.data?.error?.message || 'Error al crear la publicación de video en Facebook');
+    }
+  }
 }
 
 export const facebookService = new FacebookService();
