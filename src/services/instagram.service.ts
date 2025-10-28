@@ -123,10 +123,6 @@ export class InstagramService {
 		mediaIds: string[],
 		accessToken: string
 	): Promise<Map<string, InstagramPostInsight>> {
-		console.log(
-			`[InstagramService] 📊 Obteniendo insights para ${mediaIds.length} publicaciones de Instagram...`
-		);
-
 		// Las métricas que ya pedíamos (engagement y reach están aquí)
 		const metrics = "total_interactions,views,reach,saved";
 		const period = "lifetime";
@@ -182,9 +178,6 @@ export class InstagramService {
 				}
 			});
 
-			console.log(
-				`[InstagramService] ✅ Insights obtenidos para ${insightsMap.size} de ${mediaIds.length} publicaciones.`
-			);
 			return insightsMap;
 		} catch (error: any) {
 			const fbError = error?.response?.data?.error;
@@ -207,9 +200,6 @@ export class InstagramService {
 	): Promise<MediaContainerResponse> {
 		const mediaType =
 			payload.media_type || (payload.image_url ? "IMAGE" : "VIDEO");
-		console.log(
-			`[InstagramService] + Creando contenedor de media (${mediaType}) para IG User ${igUserId}...`
-		);
 
 		const url = `${this.apiBase}/${this.apiVersion}/${igUserId}/media`;
 
@@ -222,9 +212,6 @@ export class InstagramService {
 			const response = await axios.post<MediaContainerResponse>(
 				url,
 				params
-			);
-			console.log(
-				`[InstagramService] contenedor ${mediaType} creado con ID ${response.data.id}`
 			);
 			return response.data;
 		} catch (error: any) {
@@ -245,10 +232,6 @@ export class InstagramService {
 		accessToken: string,
 		containerId: string
 	): Promise<PublishMediaResponse> {
-		console.log(
-			`[InstagramService] 🚀 Publicando contenedor ${containerId} para IG User ${igUserId}...`
-		);
-
 		const url = `${this.apiBase}/${this.apiVersion}/${igUserId}/media_publish`;
 
 		const params = {
@@ -261,10 +244,6 @@ export class InstagramService {
 				url,
 				params
 			);
-			console.log(
-				`[InstagramService] ✅ Contenedor publicado. Media ID final: ${response.data.id}`
-			);
-
 			return response.data;
 		} catch (error: any) {
 			const fbError = error?.response?.data?.error;
@@ -284,9 +263,6 @@ export class InstagramService {
 		containerId: string,
 		accessToken: string
 	): Promise<MediaContainerStatusResponse> {
-		console.log(
-			`[InstagramService] ⏱️ Verificando estado del contenedor ${containerId}...`
-		);
 		const url = `${this.apiBase}/${this.apiVersion}/${containerId}`;
 		const params = {
 			fields: "status_code,status", // Pedimos el código y el mensaje
@@ -297,9 +273,6 @@ export class InstagramService {
 			const response = await axios.get<MediaContainerStatusResponse>(
 				url,
 				{ params }
-			);
-			console.log(
-				`[InstagramService] ✅ Estado de ${containerId}: ${response.data.status_code}`
 			);
 			return response.data;
 		} catch (error: any) {
