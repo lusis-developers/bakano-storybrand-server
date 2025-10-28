@@ -283,7 +283,10 @@ export class FacebookService {
 						});
 					}
 				} else {
-					/* ... warning log ... */
+					console.warn(
+						`[FacebookService] ⚠️  Sin insights para post ${postId}. Respuesta:`,
+						result
+					);
 				}
 			});
 			return insightsMap;
