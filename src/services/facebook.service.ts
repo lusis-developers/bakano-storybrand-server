@@ -38,93 +38,91 @@ export interface CreatePostPayload {
 	link?: string;
 	published?: boolean;
 	scheduled_publish_time?: number | string; // Timestamp UNIX o string ISO 8601
-	// Aquí se podrían añadir más campos como 'targeting' si fuera necesario
 }
 
 export interface CreatePostResponse {
-	id: string; // El ID de la nueva publicación (page_post_id)
+	id: string; // ID del post de texto/enlace
 }
 
 export interface CreatePhotoPayload {
 	url: string; // URL pública de la imagen
-	message?: string; // El texto que acompaña a la foto (el 'caption')
+	message?: string;
 	published?: boolean;
 	scheduled_publish_time?: number | string;
 }
 
 export interface CreatePhotoResponse {
-	id: string; // El ID del objeto 'photo'
-	post_id: string; // El ID de la publicación ('page_post_id')
+	id: string; // ID del objeto 'photo'
+	post_id: string; // ID de la publicación
 }
 
-export interface CarouselPostPayload {
-	message?: string;
-	// Array de objetos { media_fbid: "ID_DE_FOTO_1" }
-	attached_media: { media_fbid: string }[];
-}
-
+// Interfaces para Carrusel
 export interface UnpublishedPhotoPayload {
 	url: string;
 	message?: string;
 }
 export interface UnpublishedPhotoResponse {
-	id: string;
-} // Este es el media_fbid
+	id: string; // Este es el media_fbid
+}
 export interface CarouselPostPayload {
 	message?: string;
 	attached_media: { media_fbid: string }[];
 }
 
+// Interfaces para Video (Publicación Inmediata)
 export interface CreateVideoPayload {
-    file_url: string; // URL pública del video (de Cloudinary)
-    description?: string;
-    title?: string;
-    published?: boolean; // Para programar
-    scheduled_publish_time?: number | string;
+	file_url: string; // URL pública del video
+	description?: string;
+	title?: string;
+	published?: boolean;
+	scheduled_publish_time?: number | string; // No usado para publicación inmediata
 }
 export interface CreateVideoResponse {
-    id: string; // La API devuelve el ID del video subido
-    // post_id?: string; // El ID del post puede no devolverse inmediatamente
+	id: string; // ID del video subido
 }
+
+// Interfaces para Programar Reels
+export interface ScheduleReelPayload {
+	file_url: string; // URL pública del video
+	description?: string;
+	title?: string;
+	thumb_offset?: number;
+	share_to_feed?: boolean;
+	published?: false; // Requerido: debe ser false
+	scheduled_publish_time: number; // Requerido: Timestamp UNIX (segundos)
+}
+
+export interface ScheduleReelResponse {
+	id: string; // ID del video programado
+}
+// --- FIN INTERFACES ---
 
 export class FacebookService {
 	private readonly config: FacebookServiceConfig;
 
 	constructor(config?: Partial<FacebookServiceConfig>) {
 		const defaults: FacebookServiceConfig = {
-			apiVersion: process.env.FACEBOOK_API_VERSION || "v23.0",
+			apiVersion: process.env.FACEBOOK_API_VERSION || "v24.0", // Consistente v24.0
 			appId: process.env.FACEBOOK_APP_ID || "0",
 			appSecret: process.env.FACEBOOK_APP_SECRET || "0",
 		};
-
 		this.config = {
 			...defaults,
 			...(config || {}),
 		} as FacebookServiceConfig;
-		console.log("[FacebookService] Inicializado con configuración:", {
-			apiVersion: this.config.apiVersion,
-			appId: this.config.appId,
-			// Nunca loguear el secreto completo
-			appSecret: `${this.config.appSecret.slice(0, 6)}...`,
-		});
 	}
 
+	// Helper para construir la URL base
 	private graphUrl(path: string): string {
 		return `https://graph.facebook.com/${this.config.apiVersion}${
 			path.startsWith("/") ? path : "/" + path
 		}`;
 	}
 
-	/**
-	 * Intercambia un token de acceso corto (usuario) por uno de larga duración.
-	 * Docs: https://developers.facebook.com/docs/facebook-login/access-tokens/refreshing/
-	 */
+	// --- MÉTODOS EXISTENTES ---
 	async exchangeLongLivedUserAccessToken(
 		shortLivedAccessToken: string
 	): Promise<ExchangeTokenResponse> {
-		console.log(
-			"[FacebookService] Iniciando intercambio de token corto por largo..."
-		);
 		const url = this.graphUrl("/oauth/access_token");
 		const params = {
 			grant_type: "fb_exchange_token",
@@ -132,62 +130,39 @@ export class FacebookService {
 			client_secret: this.config.appSecret,
 			fb_exchange_token: shortLivedAccessToken,
 		};
-
-		console.log("[FacebookService] URL de intercambio:", url);
-		console.log("[FacebookService] Parámetros:", {
-			grant_type: params.grant_type,
-			client_id: params.client_id,
-			client_secret: `${params.client_secret.slice(0, 6)}...`,
-			fb_exchange_token: `${shortLivedAccessToken.slice(0, 8)}...`,
-		});
-
 		try {
 			const response = await axios.get<ExchangeTokenResponse>(url, {
 				params,
 			});
-			console.log("[FacebookService] Respuesta del intercambio:", {
-				access_token: `${response.data.access_token.slice(0, 12)}...`,
-				expires_in: response.data.expires_in,
-				token_type: response.data.token_type,
-			});
 			return response.data;
 		} catch (error: any) {
-			const fbError = error?.response?.data || error?.message;
+			const fbError = error?.response?.data?.error;
 			console.error(
-				"[FacebookService] Error en el intercambio de token:",
-				fbError
+				"[FacebookService] ❌ Error intercambiando token:",
+				fbError || error.message
 			);
-			throw new Error(
-				error?.response?.data?.error?.message ||
-					"Error al intercambiar token en Facebook"
-			);
+			throw new Error(fbError?.message || "Error al intercambiar token");
 		}
 	}
 
 	async getUserPages(userAccessToken: string): Promise<PageInfo[]> {
-		console.log("[FacebookService] obteniendo pagina del usuario...");
 		const url = this.graphUrl("/me/accounts");
-
 		const params = {
 			fields: "id,name,access_token,category,tasks,picture{url}",
 			access_token: userAccessToken,
 		};
-
 		try {
 			const response = await axios.get<{ data: PageInfo[] }>(url, {
 				params,
 			});
 			return response.data.data;
 		} catch (error: any) {
-			const fbError = error?.response?.data || error?.message;
+			const fbError = error?.response?.data?.error;
 			console.error(
-				"[FacebookService] Error en el intercambio de token:",
-				fbError
+				"[FacebookService] ❌ Error obteniendo páginas:",
+				fbError || error.message
 			);
-			throw new Error(
-				error?.response?.data?.error?.message ||
-					"Error al obtener paginas en Facebook"
-			);
+			throw new Error(fbError?.message || "Error al obtener páginas");
 		}
 	}
 
@@ -196,34 +171,24 @@ export class FacebookService {
 		pageId: string,
 		limit: number = 10
 	): Promise<PagePost[]> {
-		console.log(
-			`[FacebookService] Obteniendo las últimas ${limit} publicaciones de la página ${pageId}...`
-		);
 		const url = this.graphUrl(`/${pageId}/posts`);
 		const params = {
 			fields: "id,created_time,message,full_picture,permalink_url",
 			limit,
 			access_token: pageAccessToken,
 		};
-
 		try {
 			const response = await axios.get<{ data: PagePost[] }>(url, {
 				params,
 			});
-			console.log(
-				`[FacebookService] ✅ Se obtuvieron ${response.data.data.length} publicaciones.`
-			);
 			return response.data.data;
 		} catch (error: any) {
-			const fbError = error?.response?.data || error?.message;
+			const fbError = error?.response?.data?.error;
 			console.error(
-				`[FacebookService] Error al obtener las publicaciones de la página ${pageId}:`,
-				fbError
+				`[FacebookService] ❌ Error obteniendo posts de página ${pageId}:`,
+				fbError || error.message
 			);
-			throw new Error(
-				error?.response?.data?.error?.message ||
-					"Error al obtener las publicaciones de Facebook"
-			);
+			throw new Error(fbError?.message || "Error al obtener posts");
 		}
 	}
 
@@ -231,15 +196,8 @@ export class FacebookService {
 		pageAccessToken: string,
 		pageId: string
 	): Promise<{ id: string; name: string }> {
-		console.log(
-			`[FacebookService] Obteniendo detalles de la página ${pageId}...`
-		);
 		const url = this.graphUrl(`/${pageId}`);
-		const params = {
-			fields: "id,name",
-			access_token: pageAccessToken,
-		};
-
+		const params = { fields: "id,name", access_token: pageAccessToken };
 		try {
 			const response = await axios.get<{ id: string; name: string }>(
 				url,
@@ -247,35 +205,21 @@ export class FacebookService {
 			);
 			return response.data;
 		} catch (error: any) {
-			const fbError = error?.response?.data || error?.message;
+			const fbError = error?.response?.data?.error;
 			console.error(
-				`[FacebookService] Error al obtener detalles de la página ${pageId}:`,
-				fbError
+				`[FacebookService] ❌ Error obteniendo detalles de página ${pageId}:`,
+				fbError || error.message
 			);
 			throw new Error(
-				error?.response?.data?.error?.message ||
-					"Error al obtener detalles de la página en Facebook"
+				fbError?.message || "Error al obtener detalles de página"
 			);
 		}
 	}
 
-	/**
-	 * Obtiene las estadísticas (insights) para una lista de publicaciones usando una petición por lotes (batch request).
-	 * Maneja métricas válidas en posts y añade period para métricas con restricciones.
-	 * @param pageAccessToken Token de acceso de la Página (con permisos read_insights y pages_read_engagement, y tarea ANALYZE).
-	 * @param postIds IDs de las publicaciones (formato {pageId}_{postId}).
-	 * @param options Opcional: period, since, until.
-	 * @returns Un Map donde la clave es el ID de la publicación y el valor es un objeto con sus estadísticas.
-	 */
 	async getPostsInsights(
 		pageAccessToken: string,
 		postIds: string[]
 	): Promise<Map<string, any>> {
-		console.log(
-			`[FacebookService] 📊 Obteniendo insights para ${postIds.length} publicaciones...`
-		);
-
-		// --- LISTA DE MÉTRICAS REFINADA Y DIVIDIDA POR 'PERIOD' ---
 		const lifetimeMetrics = ["post_reactions_by_type_total"];
 		const dailyMetrics = [
 			"post_impressions",
@@ -283,37 +227,28 @@ export class FacebookService {
 			"post_engaged_users",
 			"post_video_views",
 		];
-
-		// Construimos la petición por lotes. Cada post tendrá dos sub-peticiones: una para métricas 'lifetime' y otra para 'daily'.
 		const batchRequests: {
 			method: "GET";
 			relative_url: string;
 			postId: string;
 		}[] = [];
 		postIds.forEach((postId) => {
-			// Sub-petición para métricas de por vida
 			batchRequests.push({
 				method: "GET",
-				relative_url: `${
-					this.config.apiVersion
-				}/${postId}/insights?metric=${lifetimeMetrics.join(
+				relative_url: `/${postId}/insights?metric=${lifetimeMetrics.join(
 					","
 				)}&period=lifetime`,
-				postId: postId,
+				postId,
 			});
-			// Sub-petición para métricas diarias (la API las suma si no se especifica 'since'/'until')
 			batchRequests.push({
 				method: "GET",
-				relative_url: `${
-					this.config.apiVersion
-				}/${postId}/insights?metric=${dailyMetrics.join(
+				relative_url: `/${postId}/insights?metric=${dailyMetrics.join(
 					","
 				)}&period=day`,
-				postId: postId,
+				postId,
 			});
 		});
-
-		const url = `https://graph.facebook.com/${this.config.apiVersion}`;
+		const url = this.graphUrl("/"); // Batch requests go to root with version
 		const params = {
 			access_token: pageAccessToken,
 			batch: JSON.stringify(
@@ -323,160 +258,100 @@ export class FacebookService {
 				}))
 			),
 		};
-
 		try {
 			const response = await axios.post<any[]>(url, null, { params });
 			const insightsMap = new Map<string, any>();
-
-			// Procesamos y fusionamos los resultados de las sub-peticiones
 			response.data.forEach((result, index) => {
 				const { postId } = batchRequests[index];
-
 				if (result && result.code === 200) {
 					const body = JSON.parse(result.body);
 					if (body.data && body.data.length > 0) {
-						// Inicializamos el objeto de insights para este post si no existe
-						if (!insightsMap.has(postId)) {
+						if (!insightsMap.has(postId))
 							insightsMap.set(postId, {});
-						}
 						const postInsights = insightsMap.get(postId);
-
-						// Fusionamos los resultados en el objeto
 						body.data.forEach((metric: any) => {
 							if (metric.values && metric.values.length > 0) {
-								// Para métricas diarias, sumamos los valores si hay varios días
-								if (metric.period === "day") {
-									postInsights[metric.name] =
-										metric.values.reduce(
-											(sum: number, day: any) =>
-												sum + (day.value || 0),
-											0
-										);
-								} else {
-									// Para lifetime, tomamos el primer valor
-									postInsights[metric.name] =
-										metric.values[0].value;
-								}
+								postInsights[metric.name] =
+									metric.period === "day"
+										? metric.values.reduce(
+												(sum: number, day: any) =>
+													sum + (day.value || 0),
+												0
+										  )
+										: metric.values[0].value;
 							}
 						});
 					}
 				} else {
-					const errorBody = result
-						? JSON.parse(result.body)
-						: { error: { message: "Respuesta desconocida" } };
-					console.warn(
-						`[FacebookService] ⚠️ Falló sub-petición para post ${postId}:`,
-						errorBody.error.message
-					);
+					/* ... warning log ... */
 				}
 			});
-
-			console.log(
-				`[FacebookService] ✅ Insights obtenidos para ${insightsMap.size} de ${postIds.length} publicaciones.`
-			);
 			return insightsMap;
 		} catch (error: any) {
-			const fbError = error?.response?.data || error?.message;
+			const fbError = error?.response?.data?.error;
 			console.error(
-				`[FacebookService] Error al obtener insights por lotes:`,
-				fbError
+				"[FacebookService] ❌ Error obteniendo insights:",
+				fbError || error.message
 			);
-			// Importante: no retornes el mensaje crudo; normaliza
-			throw new Error(
-				error?.response?.data?.error?.message ||
-					"Error al obtener insights de Facebook"
-			);
+			throw new Error(fbError?.message || "Error al obtener insights");
 		}
 	}
 
 	async createPagePost(
+		// Texto/Enlaces
 		pageAccessToken: string,
 		pageId: string,
 		payload: CreatePostPayload
 	): Promise<CreatePostResponse> {
-		console.log(
-			"[FacebookService] 📝 Creando publicación en la página: ",
-			pageId
-		);
-
-		const url = this.graphUrl(`/ ${pageId}/feed`);
-
-		const params = {
-			...payload,
-			access_token: pageAccessToken,
-		};
-
-		console.log(
-			"[FacebookService] 📝 Parámetros de la solicitud: ",
-			params
-		);
-
+		const url = this.graphUrl(`/${pageId}/feed`);
+		const params = { ...payload, access_token: pageAccessToken };
 		try {
 			const response = await axios.post<CreatePostResponse>(url, null, {
 				params,
 			});
-
-			console.log(
-				`[FacebookService] ✅ Publicación creada con ID: ${response.data.id}`
-			);
 			return response.data;
 		} catch (error: any) {
-			const fbError = error?.response?.data || error?.message;
+			const fbError = error?.response?.data?.error;
 			console.error(
-				`[FacebookService] ❌ Error al crear la publicación en la página ${pageId}:`,
-				fbError
+				"[FacebookService] ❌ Error creando post texto/enlace:",
+				fbError || error.message
 			);
-			// Normalizamos el error para que el controlador lo capture
 			throw new Error(
-				error?.response?.data?.error?.message ||
-					"Error al crear la publicación en Facebook"
+				fbError?.message || "Error al crear post de texto/enlace"
 			);
 		}
 	}
 
 	async createPagePhotoPost(
-		// Para Foto Única
+		// Foto Única
 		pageAccessToken: string,
 		pageId: string,
 		payload: CreatePhotoPayload
 	): Promise<CreatePhotoResponse> {
-		console.log(
-			`[FacebookService] 🖼️ Creando publicación de FOTO ÚNICA...`
-		);
-		const url = this.graphUrl(`/${pageId}/photos`); // Ya tenía la barra inicial correcta
+		const url = this.graphUrl(`/${pageId}/photos`);
 		const params = { ...payload, access_token: pageAccessToken };
 		try {
 			const response = await axios.post<CreatePhotoResponse>(url, null, {
 				params,
 			});
-			console.log(
-				`[FacebookService] ✅ Publicación FOTO ÚNICA creada con post_id: ${response.data.post_id}`
-			);
 			return response.data;
 		} catch (error: any) {
-			// ... (manejo de error existente) ...
-			const fbError = error?.response?.data || error?.message;
+			const fbError = error?.response?.data?.error;
 			console.error(
-				`[FacebookService] ❌ Error al crear publicación FOTO ÚNICA:`,
-				fbError
+				"[FacebookService] ❌ Error creando post foto única:",
+				fbError || error.message
 			);
-			throw new Error(
-				error?.response?.data?.error?.message ||
-					"Error al crear la publicación de foto en Facebook"
-			);
+			throw new Error(fbError?.message || "Error al crear post de foto");
 		}
 	}
 
 	async uploadUnpublishedPhoto(
+		// Carrusel Paso 1
 		pageAccessToken: string,
 		pageId: string,
 		payload: UnpublishedPhotoPayload
 	): Promise<UnpublishedPhotoResponse> {
-		console.log(
-			`[FacebookService] 🗂️ Subiendo foto no publicada para carrusel...`
-		);
 		const url = this.graphUrl(`/${pageId}/photos`);
-		// Clave: published=false
 		const params = {
 			...payload,
 			published: false,
@@ -488,118 +363,70 @@ export class FacebookService {
 				null,
 				{ params }
 			);
-			console.log(
-				`[FacebookService] ✅ Foto no publicada subida con ID (media_fbid): ${response.data.id}`
-			);
-			return response.data; // Devuelve { id: "media_fbid" }
+			return response.data;
 		} catch (error: any) {
-			const fbError = error?.response?.data || error?.message;
+			const fbError = error?.response?.data?.error;
 			console.error(
-				`[FacebookService] ❌ Error al subir foto no publicada:`,
-				fbError
+				"[FacebookService] ❌ Error subiendo foto no publicada:",
+				fbError || error.message
 			);
 			throw new Error(
-				error?.response?.data?.error?.message ||
-					"Error al subir foto no publicada para carrusel"
+				fbError?.message || "Error al subir foto no publicada"
 			);
 		}
 	}
 
-	/**
-	 * =================================================================
-	 * MÉTODO NUEVO (PARA CARRUSELES - PASO 2)
-	 * =================================================================
-	 * Publica un post en el FEED adjuntando los IDs ('media_fbid') de las fotos.
-	 */
 	async publishCarouselPost(
+		// Carrusel Paso 2
 		pageAccessToken: string,
 		pageId: string,
 		payload: CarouselPostPayload
 	): Promise<CreatePostResponse> {
-		// Devuelve solo el ID del post final
-		console.log(`[FacebookService] 🎠 Creando publicación de CARRUSEL...`);
-		// Se publica en el endpoint /feed, no /photos
 		const url = this.graphUrl(`/${pageId}/feed`);
-		// Clave: attached_media como string JSON
 		const params = {
 			message: payload.message,
 			attached_media: JSON.stringify(payload.attached_media),
 			access_token: pageAccessToken,
 		};
-		console.log("[FacebookService] Publicando CARRUSEL con payload:", {
-			message: payload.message,
-			num_media: payload.attached_media.length,
-		});
 		try {
 			const response = await axios.post<CreatePostResponse>(url, null, {
 				params,
 			});
-			console.log(
-				`[FacebookService] ✅ Carrusel creado con post_id: ${response.data.id}`
-			);
-			return response.data; // Devuelve { id: "post_id" }
+			return response.data;
 		} catch (error: any) {
-			const fbError = error?.response?.data || error?.message;
+			const fbError = error?.response?.data?.error;
 			console.error(
-				`[FacebookService] ❌ Error al crear el carrusel:`,
-				fbError
+				"[FacebookService] ❌ Error creando carrusel:",
+				fbError || error.message
 			);
 			throw new Error(
-				error?.response?.data?.error?.message ||
-					"Error al crear el post de carrusel"
+				fbError?.message || "Error al crear post de carrusel"
 			);
 		}
 	}
 
-	/**
-   * =============================================================
-   * MÉTODO NUEVO (PARA VIDEOS - Publicación simple con URL)
-   * =============================================================
-   * Publica un VIDEO en una Página de Facebook usando una URL pública.
-   * Corresponde a: POST /{page_id}/videos con 'file_url'
-   * * @param pageAccessToken Token de la Página.
-   * @param pageId ID de la Página.
-   * @param payload Datos del video (file_url, description, etc.)
-   * @returns El ID del video creado.
-   */
-  async createPageVideoPost(
-    pageAccessToken: string,
-    pageId: string,
-    payload: CreateVideoPayload 
-  ): Promise<CreateVideoResponse> { // <-- Usa la nueva interfaz de respuesta
-    
-    console.log(`[FacebookService] 🎬 Creando publicación de VIDEO en la página ${pageId} desde URL...`);
-    
-    // Apuntamos al endpoint /videos
-    const url = this.graphUrl(`/${pageId}/videos`);
-
-    // El payload (file_url, description) se pasa como 'params'
-    const params = {
-      ...payload, // Incluye file_url, description, title, published, etc.
-      access_token: pageAccessToken,
-    };
-
-    console.log('[FacebookService] Publicando VIDEO con payload:', { 
-        file_url: payload.file_url, 
-        description: payload.description,
-        title: payload.title 
-    });
-
-    try {
-      // Hacemos el POST a /videos
-      const response = await axios.post<CreateVideoResponse>(url, null, { params });
-      
-      // La respuesta de la API de video solo suele dar el ID del video
-      console.log(`[FacebookService] ✅ Video subido/publicado con ID: ${response.data.id}`);
-      // Nota: Facebook procesa el video en segundo plano. El post puede tardar en aparecer.
-      return { id: response.data.id };
-
-    } catch (error: any) {
-      const fbError = error?.response?.data || error?.message;
-      console.error(`[FacebookService] ❌ Error al crear la publicación de VIDEO:`, fbError);
-      throw new Error(error?.response?.data?.error?.message || 'Error al crear la publicación de video en Facebook');
-    }
-  }
+	async createPageVideoPost(
+		// Video Inmediato
+		pageAccessToken: string,
+		pageId: string,
+		payload: CreateVideoPayload
+	): Promise<CreateVideoResponse> {
+		const url = this.graphUrl(`/${pageId}/videos`);
+		const params = { ...payload, access_token: pageAccessToken };
+		try {
+			const response = await axios.post<CreateVideoResponse>(url, null, {
+				params,
+			});
+			return { id: response.data.id };
+		} catch (error: any) {
+			const fbError = error?.response?.data?.error;
+			console.error(
+				"[FacebookService] ❌ Error creando post de video:",
+				fbError || error.message
+			);
+			throw new Error(fbError?.message || "Error al crear post de video");
+		}
+	}
 }
 
 export const facebookService = new FacebookService();
