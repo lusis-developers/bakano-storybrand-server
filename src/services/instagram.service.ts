@@ -40,6 +40,33 @@ export interface InstagramPostInsight {
 	// Nota: video_views se puede añadir si se filtra por media_type === 'VIDEO'
 }
 
+export interface CreateMediaContainerPayload {
+	media_type?: "IMAGE" | "REELS" | "CAROUSEL";
+	image_url?: string;
+	video_url?: string;
+	caption?: string;
+	is_carousel_item?: boolean;
+	children?: string[];
+	share_to_feed?: boolean;
+	thumb_offset?: number;
+	published?: boolean;
+	scheduled_publish_time?: string | number
+}
+
+export interface MediaContainerResponse {
+	id: string;
+}
+
+export interface PublishMediaResponse {
+	id: string;
+}
+
+export interface MediaContainerStatusResponse {
+	status_code: "EXPIRED" | "ERROR" | "FINISHED" | "IN_PROGRESS" | "PUBLISHED";
+	status: string;
+	id: string;
+}
+
 export class InstagramService {
 	private readonly apiBase = "https://graph.facebook.com";
 	private readonly apiVersion = process.env.FACEBOOK_API_VERSION || "v24.0";
@@ -101,7 +128,7 @@ export class InstagramService {
 		);
 
 		// Las métricas que ya pedíamos (engagement y reach están aquí)
-		const metrics = 'total_interactions,views,reach,saved';
+		const metrics = "total_interactions,views,reach,saved";
 		const period = "lifetime";
 
 		// 1. Construir las peticiones por lotes
@@ -168,6 +195,122 @@ export class InstagramService {
 			throw new CustomError(
 				fbError?.message ||
 					"Error al obtener insights de las publicaciones de Instagram",
+				error?.response?.status || HttpStatusCode.InternalServerError
+			);
+		}
+	}
+
+	async createMediaContainer(
+		igUserId: string,
+		accessToken: string,
+		payload: CreateMediaContainerPayload
+	): Promise<MediaContainerResponse> {
+		const mediaType =
+			payload.media_type || (payload.image_url ? "IMAGE" : "VIDEO");
+		console.log(
+			`[InstagramService] + Creando contenedor de media (${mediaType}) para IG User ${igUserId}...`
+		);
+
+		const url = `${this.apiBase}/${this.apiVersion}/${igUserId}/media`;
+
+		const params = {
+			...payload,
+			access_token: accessToken,
+		};
+
+		try {
+			const response = await axios.post<MediaContainerResponse>(
+				url,
+				params
+			);
+			console.log(
+				`[InstagramService] contenedor ${mediaType} creado con ID ${response.data.id}`
+			);
+			return response.data;
+		} catch (error: any) {
+			const fbError = error?.response?.data?.error;
+
+			console.error("errorrrr: ", error.response.data);
+
+			throw new CustomError(
+				fbError?.nessage ||
+					"Error al crear el contenedor de media en Instagram",
+				error?.response?.status || HttpStatusCode.InternalServerError
+			);
+		}
+	}
+
+	async publishMediaContainer(
+		igUserId: string,
+		accessToken: string,
+		containerId: string
+	): Promise<PublishMediaResponse> {
+		console.log(
+			`[InstagramService] 🚀 Publicando contenedor ${containerId} para IG User ${igUserId}...`
+		);
+
+		const url = `${this.apiBase}/${this.apiVersion}/${igUserId}/media_publish`;
+
+		const params = {
+			creation_id: containerId,
+			access_token: accessToken,
+		};
+
+		try {
+			const response = await axios.post<PublishMediaResponse>(
+				url,
+				params
+			);
+			console.log(
+				`[InstagramService] ✅ Contenedor publicado. Media ID final: ${response.data.id}`
+			);
+
+			return response.data;
+		} catch (error: any) {
+			const fbError = error?.response?.data?.error;
+			console.error(
+				`[InstagramService] ❌ Error al publicar contenedor ${containerId}:`,
+				fbError || error.message
+			);
+			throw new CustomError(
+				fbError?.message ||
+					`Error al publicar el contenedor ${containerId} en Instagram`,
+				error?.response?.status || HttpStatusCode.InternalServerError
+			);
+		}
+	}
+
+	async checkContainerStatus(
+		containerId: string,
+		accessToken: string
+	): Promise<MediaContainerStatusResponse> {
+		console.log(
+			`[InstagramService] ⏱️ Verificando estado del contenedor ${containerId}...`
+		);
+		const url = `${this.apiBase}/${this.apiVersion}/${containerId}`;
+		const params = {
+			fields: "status_code,status", // Pedimos el código y el mensaje
+			access_token: accessToken,
+		};
+
+		try {
+			const response = await axios.get<MediaContainerStatusResponse>(
+				url,
+				{ params }
+			);
+			console.log(
+				`[InstagramService] ✅ Estado de ${containerId}: ${response.data.status_code}`
+			);
+			return response.data;
+		} catch (error: any) {
+			const fbError = error?.response?.data?.error;
+			console.error(
+				`[InstagramService] ❌ Error al verificar estado del contenedor ${containerId}:`,
+				fbError || error.message
+			);
+			throw new CustomError(
+				fbError?.message ||
+					`Error al verificar estado del contenedor ${containerId}`,
 				error?.response?.status || HttpStatusCode.InternalServerError
 			);
 		}
