@@ -6,6 +6,8 @@ import { Integration } from "../../models/integration.model";
 import { Business } from "../../models/business.model";
 import { facebookService } from "../../services/facebook.service";
 import { instagramService } from "../../services/instagram.service";
+import { Types } from "mongoose";
+import { instagramPostService } from "../../services/instagramPost.service";
 
 export async function instagramConnectController(req: Request, res: Response, next: NextFunction) {
   try {
@@ -206,5 +208,106 @@ export async function getinstagramPostsController(req: Request, res: Response, n
     });
   } catch (error) {
     next(error);
+  }
+}
+
+export async function createInstagramPhotoPostController(
+	req: Request,
+	res: Response,
+	next: NextFunction
+) {
+	try {
+		const { businessId } = req.params;
+
+		const files = req.files as Express.Multer.File[];
+
+		if (!businessId || !Types.ObjectId.isValid(businessId)) {
+			return next(
+				new CustomError(
+					"Invalid or missing businessId",
+					HttpStatusCode.BadRequest
+				)
+			);
+		}
+
+		if (!files || files.length === 0) {
+			return next(
+				new CustomError(
+					"No image file sprovided in 'images', field",
+					HttpStatusCode.BadRequest
+				)
+			);
+		}
+
+		console.log(
+			`[IGPhotoController] Delegando post de foto/carrusel (${files.length} archivos) al servicio...`
+		);
+
+		const result = await instagramPostService.publishPhotoOrCarouselPost(
+			businessId,
+			req.body,
+			files
+		);
+		console.log(
+			`[IGPhotoController] Servicio completó la publicación tipo: ${result.type}.`
+		);
+
+		res.status(HttpStatusCode.Created).send({
+			message: `Instagram ${result.type} post created succesfully`,
+			data: result.data,
+		});
+
+		return;
+	} catch (error: any) {
+		console.error(
+			"[CreateInstagramPhotoPostController] ❌ Error:",
+			error.message
+		);
+		next(error);
+	}
+}
+
+/**
+ * =============================================================
+ * CONTROLADOR (PARA REELS DE INSTAGRAM)
+ * =============================================================
+ * Maneja la solicitud HTTP para crear un Reel (video) en Instagram.
+ * Delega toda la lógica de negocio al InstagramPostService.
+ */
+export async function createInstagramReelController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { businessId } = req.params;
+    
+    // 1. VALIDAR ENTRADA
+    const file = req.file as Express.Multer.File | undefined; // Archivo desde multer.single('video')
+
+    if (!businessId || !Types.ObjectId.isValid(businessId)) {
+      return next(new CustomError("Invalid or missing businessId", HttpStatusCode.BadRequest));
+    }
+    
+    // Asegurar que multer envió el archivo de video
+    if (!file) {
+      return next(new CustomError("No video file provided in 'video' field", HttpStatusCode.BadRequest));
+    }
+
+    // 2. DELEGAR AL SERVICIO ORQUESTADOR
+    console.log(`[IGReelController] Delegando post de Reel al servicio...`);
+    const result = await instagramPostService.publishReelPost(
+      businessId, 
+      req.body, // Pasamos el body (caption, share_to_feed, etc.)
+      file      // Pasamos el archivo de video
+    );
+    console.log(`[IGReelController] Servicio completó la publicación tipo: ${result.type}.`);
+
+    // 3. ENVIAR RESPUESTA ÉXITOSA (201 Created)
+    res.status(HttpStatusCode.Created).send({
+      message: `Instagram ${result.type} post created successfully`,
+      data: result.data // Contiene el ID final del media de Instagram
+    });
+
+  } catch (error: any) {
+     // Captura errores del servicio o validación
+    console.error('[CreateInstagramReelController] ❌ Error:', error.message);
+    next(error); // Pasa al manejador de errores global
   }
 }
