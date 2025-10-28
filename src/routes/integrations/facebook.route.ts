@@ -12,7 +12,7 @@ router.post('/connect', facebookConnectController)
 
 router.post('/connect-page', facebookSavePageController)
 
-router.post('/posts/:businessId', getFacebookPostsController)
+router.get('/posts/:businessId', getFacebookPostsController)
 
 router.post('/post/publish/text/:businessId', createPostController)
 
