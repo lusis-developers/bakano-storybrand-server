@@ -70,7 +70,7 @@ export class FacebookPostService {
     console.log(`[FBPostService] Obteniendo credenciales para businessId: ${businessId}`);
     const integration = await models.integration.findOne({ 
       business: businessId, 
-      type: 'meta',
+      type: 'facebook',
       isConnected: true 
     }).select('+config.accessToken');
 
@@ -148,7 +148,9 @@ export class FacebookPostService {
     // --- PASO 1: OBTENER CREDENCIALES ---
     console.log(`[FBPostService] Getting credentials for video post (businessId: ${businessId})`);
     const integration = await models.integration.findOne({
-      business: businessId, type: 'meta', isConnected: true
+      business: businessId,
+      type: 'facebook',
+      isConnected: true
     }).select('+config.accessToken');
 
     if (!integration || !integration.config.accessToken || !integration.metadata?.pageId) {
