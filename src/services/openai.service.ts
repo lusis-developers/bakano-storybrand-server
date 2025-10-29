@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import type { MessageRole } from '../models/chat.model';
 
 export class OpenAIService {
   private client: OpenAI;
@@ -114,6 +115,47 @@ Crea un BrandScript completo y profesional en español siguiendo el framework de
 **FORMATO DE SALIDA:**
 Genera un BrandScript estructurado, claro y persuasivo que pueda usarse inmediatamente para crear contenido de marketing efectivo. Incluye ejemplos específicos de copy para cada sección.
 `;
+  }
+
+  async generateChatReply(
+    systemPrompt: string,
+    context: Array<{ role: MessageRole; content: string }>,
+    // Nota: El parámetro se llama 'maxTokens', no 'maxOutputTokens'
+    config: { temperature: number; maxTokens: number; model?: string }
+    // Nota: El tipo de 'usage' es específico de OpenAI
+  ): Promise<{ reply: string; usage?: OpenAI.CompletionUsage }> { 
+    
+    try {
+      const chosenModel = config.model || 'gpt-4o';
+      
+      // Adaptar roles para OpenAI (solo acepta system, user, assistant)
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        ...context
+          .filter(m => m.role === 'user' || m.role === 'assistant') // Filtra roles válidos
+          .map((m) => ({ role: m.role, content: m.content })),
+      ] as Array<{
+        role: 'system' | 'user' | 'assistant';
+        content: string;
+      }>;
+
+      // Usar el cliente y método correctos de OpenAI
+      const completion = await this.client.chat.completions.create({
+        model: chosenModel,
+        messages: messages,
+        temperature: config.temperature,
+        max_tokens: config.maxTokens, // Usar el nombre de parámetro correcto
+      });
+
+      const reply = completion.choices[0]?.message?.content || '';
+      
+      // Devolver el objeto 'usage' completo que nos da OpenAI
+      return { reply, usage: completion.usage }; 
+
+    } catch (error) {
+      console.error('Error al generar chat con OpenAI:', error);
+      throw new Error('Error al generar respuesta de OpenAI');
+    }
   }
 }
 
