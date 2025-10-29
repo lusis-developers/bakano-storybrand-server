@@ -7,6 +7,7 @@ import onboardingRouter from './onboarding.router';
 import storybrandAccountRouter from './storybrand-account.route';
 import facebookRouter from './integrations/facebook.route'
 import instagramRouter from './integrations/instagram.route'
+import chatRouter from './chat.route'
 
 
 
@@ -22,6 +23,7 @@ function routerApi(app: Application) {
   router.use("/storybrand-account", storybrandAccountRouter);
   router.use("/integrations/facebook", facebookRouter)
   router.use("/integrations/instagram", instagramRouter)
+  router.use("/chats", chatRouter)
 }
 
 export default routerApi;
