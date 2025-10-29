@@ -1,97 +1,122 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GenerativeModel, GoogleGenerativeAI } from "@google/generative-ai";
+import type { MessageRole } from "../models/chat.model";
 
 export class GeminiService {
-  private genAI: GoogleGenerativeAI;
-  private model: any;
+	private genAI: GoogleGenerativeAI;
+	private model: any;
 
-  constructor() {
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY no está configurada en las variables de entorno');
-    }
+	private getModel(modelName: string = "gemini-1.5-flash"): GenerativeModel {
+		return this.genAI.getGenerativeModel({ model: modelName });
+	}
 
-    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
-  }
+	constructor() {
+		if (!process.env.GEMINI_API_KEY) {
+			throw new Error(
+				"GEMINI_API_KEY no está configurada en las variables de entorno"
+			);
+		}
 
-  /**
-   * Genera un BrandScript completo basado en las respuestas del usuario
-   */
-  async generateBrandScript(answers: {
-    companyName: string;
-    productsServices: string;
-    targetAudience: string;
-    mainProblem: string;
-    solution: string;
-    uniqueCharacteristics: string;
-    authority: string;
-    steps: string;
-  }, onboardingContext?: any): Promise<string> {
-    const prompt = this.buildBrandScriptPrompt(answers, onboardingContext);
+		this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+		this.model = this.genAI.getGenerativeModel({
+			model: "gemini-2.5-flash-lite",
+		});
+	}
 
-    try {
-      const result = await this.model.generateContent({
-        contents: [{
-          role: 'user',
-          parts: [{
-            text: `Eres un experto en marketing y comunicación que ayuda a crear BrandScripts efectivos siguiendo el framework de StoryBrand de Donald Miller. Generas contenido claro, persuasivo y orientado a resultados en español.\n\n${prompt}`
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2000,
-        }
-      });
+	/**
+	 * Genera un BrandScript completo basado en las respuestas del usuario
+	 */
+	async generateBrandScript(
+		answers: {
+			companyName: string;
+			productsServices: string;
+			targetAudience: string;
+			mainProblem: string;
+			solution: string;
+			uniqueCharacteristics: string;
+			authority: string;
+			steps: string;
+		},
+		onboardingContext?: any
+	): Promise<string> {
+		const prompt = this.buildBrandScriptPrompt(answers, onboardingContext);
 
-      const response = await result.response;
-      return response.text() || 'Error al generar el BrandScript';
-    } catch (error) {
-      console.error('Error al generar BrandScript con Gemini:', error);
-      throw new Error('Error al generar el BrandScript');
-    }
-  }
+		try {
+			const result = await this.model.generateContent({
+				contents: [
+					{
+						role: "user",
+						parts: [
+							{
+								text: `Eres un experto en marketing y comunicación que ayuda a crear BrandScripts efectivos siguiendo el framework de StoryBrand de Donald Miller. Generas contenido claro, persuasivo y orientado a resultados en español.\n\n${prompt}`,
+							},
+						],
+					},
+				],
+				generationConfig: {
+					temperature: 0.7,
+					topK: 40,
+					topP: 0.95,
+					maxOutputTokens: 2000,
+				},
+			});
 
-  /**
-   * Genera contenido específico de marketing basado en el BrandScript
-   */
-  async generateMarketingContent(brandScript: string, contentType: 'email' | 'landing' | 'social' | 'elevator'): Promise<string> {
-    const prompts = {
-      email: 'Crea un email de marketing persuasivo basado en este BrandScript:',
-      landing: 'Crea el copy para una landing page efectiva basada en este BrandScript:',
-      social: 'Crea 3 posts para redes sociales basados en este BrandScript:',
-      elevator: 'Crea un elevator pitch de 30 segundos basado en este BrandScript:'
-    };
+			const response = await result.response;
+			return response.text() || "Error al generar el BrandScript";
+		} catch (error) {
+			console.error("Error al generar BrandScript con Gemini:", error);
+			throw new Error("Error al generar el BrandScript");
+		}
+	}
 
-    try {
-      const result = await this.model.generateContent({
-        contents: [{
-          role: 'user',
-          parts: [{
-            text: `Eres un copywriter experto que crea contenido de marketing efectivo en español siguiendo los principios de StoryBrand.\n\n${prompts[contentType]}\n\n${brandScript}`
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.8,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 1500,
-        }
-      });
+	/**
+	 * Genera contenido específico de marketing basado en el BrandScript
+	 */
+	async generateMarketingContent(
+		brandScript: string,
+		contentType: "email" | "landing" | "social" | "elevator"
+	): Promise<string> {
+		const prompts = {
+			email: "Crea un email de marketing persuasivo basado en este BrandScript:",
+			landing:
+				"Crea el copy para una landing page efectiva basada en este BrandScript:",
+			social: "Crea 3 posts para redes sociales basados en este BrandScript:",
+			elevator:
+				"Crea un elevator pitch de 30 segundos basado en este BrandScript:",
+		};
 
-      const response = await result.response;
-      return response.text() || 'Error al generar contenido';
-    } catch (error) {
-      console.error('Error al generar contenido de marketing:', error);
-      throw new Error('Error al generar el contenido de marketing');
-    }
-  }
+		try {
+			const result = await this.model.generateContent({
+				contents: [
+					{
+						role: "user",
+						parts: [
+							{
+								text: `Eres un copywriter experto que crea contenido de marketing efectivo en español siguiendo los principios de StoryBrand.\n\n${prompts[contentType]}\n\n${brandScript}`,
+							},
+						],
+					},
+				],
+				generationConfig: {
+					temperature: 0.8,
+					topK: 40,
+					topP: 0.95,
+					maxOutputTokens: 1500,
+				},
+			});
 
-  /**
-   * Analiza y mejora un BrandScript existente
-   */
-  async analyzeBrandScript(brandScript: string): Promise<string> {
-    const prompt = `
+			const response = await result.response;
+			return response.text() || "Error al generar contenido";
+		} catch (error) {
+			console.error("Error al generar contenido de marketing:", error);
+			throw new Error("Error al generar el contenido de marketing");
+		}
+	}
+
+	/**
+	 * Analiza y mejora un BrandScript existente
+	 */
+	async analyzeBrandScript(brandScript: string): Promise<string> {
+		const prompt = `
 Analiza el siguiente BrandScript y proporciona recomendaciones específicas para mejorarlo:
 
 ${brandScript}
@@ -113,43 +138,50 @@ ${brandScript}
 - Versión mejorada de las secciones más débiles
 `;
 
-    try {
-      const result = await this.model.generateContent({
-        contents: [{
-          role: 'user',
-          parts: [{
-            text: `Eres un consultor experto en StoryBrand que analiza y mejora BrandScripts para maximizar su efectividad.\n\n${prompt}`
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.6,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2000,
-        }
-      });
+		try {
+			const result = await this.model.generateContent({
+				contents: [
+					{
+						role: "user",
+						parts: [
+							{
+								text: `Eres un consultor experto en StoryBrand que analiza y mejora BrandScripts para maximizar su efectividad.\n\n${prompt}`,
+							},
+						],
+					},
+				],
+				generationConfig: {
+					temperature: 0.6,
+					topK: 40,
+					topP: 0.95,
+					maxOutputTokens: 2000,
+				},
+			});
 
-      const response = await result.response;
-      return response.text() || 'Error al analizar el BrandScript';
-    } catch (error) {
-      console.error('Error al analizar BrandScript:', error);
-      throw new Error('Error al analizar el BrandScript');
-    }
-  }
+			const response = await result.response;
+			return response.text() || "Error al analizar el BrandScript";
+		} catch (error) {
+			console.error("Error al analizar BrandScript:", error);
+			throw new Error("Error al analizar el BrandScript");
+		}
+	}
 
-  private buildBrandScriptPrompt(answers: any, onboardingContext?: any): string {
-    let contextSection = '';
-    
-    if (onboardingContext && onboardingContext.isComplete) {
-      contextSection = `
+	private buildBrandScriptPrompt(
+		answers: any,
+		onboardingContext?: any
+	): string {
+		let contextSection = "";
+
+		if (onboardingContext && onboardingContext.isComplete) {
+			contextSection = `
 **CONTEXTO DEL USUARIO:**
 ${onboardingContext.generateAIPrompt()}
 
 Usa este contexto para personalizar el BrandScript según el perfil, objetivos y canales de marketing del usuario.
 `;
-    }
-    
-    return `
+		}
+
+		return `
 Crea un BrandScript siguiendo el framework de StoryBrand para la siguiente empresa.
 
 **INFORMACIÓN DE LA EMPRESA:**
@@ -187,7 +219,46 @@ Crea un BrandScript siguiendo el framework de StoryBrand para la siguiente empre
 
 Responde SOLO con el JSON, sin texto adicional.
 `;
-  }
+	}
+	/**
+	 * Genera una respuesta de chat genérica
+	 */
+	async generateChatReply(
+		systemPrompt: string,
+		context: Array<{ role: MessageRole; content: string }>,
+		config: { temperature: number; maxOutputTokens: number; model?: string }
+	): Promise<{ reply: string; usage?: undefined }> {
+		try {
+			// Usamos el helper con el modelo específico del chat
+			const chosenModel = this.getModel(
+				config.model || "gemini-1.5-flash"
+			);
+
+			// Adaptar historial para Gemini (formato de texto plano)
+			const textPrompt = [
+				`SYSTEM PROMPT: ${systemPrompt}`,
+				...context.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
+			].join("\n\n");
+
+			const result = await chosenModel.generateContent({
+				contents: [{ role: "user", parts: [{ text: textPrompt }] }],
+				generationConfig: {
+					temperature: config.temperature,
+					maxOutputTokens: config.maxOutputTokens,
+				},
+			});
+
+			const response = await result.response;
+			const reply = response.text() || "";
+
+			// El SDK de Gemini (v1) no expone fácilmente el conteo de tokens aquí.
+			// Devolvemos 'undefined' para 'usage' para mantener la interfaz.
+			return { reply, usage: undefined };
+		} catch (error) {
+			console.error("Error al generar chat con Gemini:", error);
+			throw new Error("Error al generar respuesta de Gemini");
+		}
+	}
 }
 
 export default new GeminiService();
