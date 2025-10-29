@@ -29,9 +29,9 @@ export async function instagramConnectController(req: Request, res: Response, ne
       expiresInSeconds = exchange.expires_in || 5184000; // ~60 días
       expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
 
-      // Si viene el business, persistimos el token de usuario long-lived en la integración con estado "pending"
+      // Si viene el business, persistimos el token de usuario long-lived en la integración con estado "pending" para Instagram
       if (business) {
-        await Integration.upsertUserToken(business, longLivedUserToken, expiresInSeconds);
+        await Integration.upsertUserToken(business, longLivedUserToken, expiresInSeconds || 5184000, 'instagram');
       }
     } catch (e) {
       console.warn('[instagramConnectController] No se pudo intercambiar el token de usuario por long-lived, se usará el recibido. Esto puede caducar pronto:', (e as Error).message);
@@ -100,14 +100,14 @@ export async function instagramSavePageController(req: Request, res: Response, n
     }
 
     // 4) Guardar/Actualizar la integración con el PAGE token (finalización de conexión)
-    let integration = await Integration.finalizeWithPageToken(business, pageId, resolvedPageName!, pageAccessToken);
+    let integration = await Integration.finalizeWithPageToken(business, pageId, resolvedPageName!, pageAccessToken, 'instagram');
 
     // Si no existía la integración previa (paso 1), creamos una nueva
     if (!integration) {
       integration = await Integration.create({
-        name: `Instagram (via Meta): ${resolvedPageName}`,
-        description: 'Instagram Business (via Meta)',
-        type: 'meta',
+        name: `Instagram: ${resolvedPageName}`,
+        description: 'Instagram Business',
+        type: 'instagram',
         business,
         config: {
           accessToken: pageAccessToken,
@@ -139,7 +139,7 @@ export async function instagramSavePageController(req: Request, res: Response, n
     await Business.updateOne({ _id: business }, { $addToSet: { integrations: integration._id } });
 
     // 7) Recuperar integración "segura" (sin tokens) para responder
-    const safeIntegration = await Integration.findOne({ business, type: 'meta' }).lean();
+    const safeIntegration = await Integration.findOne({ business, type: 'instagram' }).lean();
 
     return res.status(HttpStatusCode.Ok).send({
       message: "Instagram page connected successfully",
@@ -166,7 +166,7 @@ export async function getinstagramPostsController(req: Request, res: Response, n
     }
 
     // Recuperar integración Meta y seleccionar explícitamente el access token
-    const integration = await Integration.findOne({ business: businessId, type: 'meta' })
+    const integration = await Integration.findOne({ business: businessId, type: 'instagram' })
       .select('+config.accessToken')
       .lean();
 
