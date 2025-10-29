@@ -244,16 +244,15 @@ export class InstagramPostService {
 			);
 		}
 
-		const integration = await models.integration
-			.findOne({
-				business: businessId,
-				type: "meta",
-				"metadata.platform": "instagram",
-				isConnected: true,
-			})
-			.select(
-				"+config.accessToken metadata.pageId metadata.instagramAccountId"
-			);
+        const integration = await models.integration
+            .findOne({
+                business: businessId,
+                type: "instagram",
+                isConnected: true,
+            })
+            .select(
+                "+config.accessToken metadata.pageId metadata.instagramAccountId"
+            );
 
 		if (!integration) {
 			throw new CustomError(
