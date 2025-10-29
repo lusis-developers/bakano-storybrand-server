@@ -4,7 +4,7 @@ import { Schema, model, Document, Types, Model } from 'mongoose';
 
 export interface IIntegration extends Document {
   name: string;
-  type: 'meta' | 'google' | 'mailchimp' | 'stripe' | 'zapier' | 'hubspot' | 'salesforce' | 'other';
+  type: 'facebook' | 'instagram' | 'google' | 'mailchimp' | 'stripe' | 'zapier' | 'hubspot' | 'salesforce' | 'other';
   description?: string;
   business: Types.ObjectId;
   config: {
@@ -35,9 +35,20 @@ export interface IIntegration extends Document {
 
 // Interface for static methods, updated for the two-step flow
 export interface IIntegrationModel extends Model<IIntegration> {
-  upsertUserToken(businessId: string | Types.ObjectId, userAccessToken: string, expiresIn: number): Promise<IIntegration>;
-  finalizeWithPageToken(businessId: string | Types.ObjectId, pageId: string, pageName: string, pageAccessToken: string): Promise<IIntegration | null>;
-  disconnectMeta(businessId: string | Types.ObjectId): Promise<IIntegration | null>;
+  upsertUserToken(
+    businessId: string | Types.ObjectId,
+    userAccessToken: string,
+    expiresIn: number,
+    type: 'instagram' | 'facebook'
+  ): Promise<IIntegration>;
+  finalizeWithPageToken(
+    businessId: string | Types.ObjectId,
+    pageId: string,
+    pageName: string,
+    pageAccessToken: string,
+    type: 'instagram' | 'facebook'
+  ): Promise<IIntegration | null>;
+  disconnectIntegration(businessId: string | Types.ObjectId, type: 'instagram' | 'facebook'): Promise<IIntegration | null>;
 }
 
 // --- SCHEMA DEFINITION ---
@@ -51,7 +62,7 @@ const integrationSchema = new Schema<IIntegration>({
   },
   type: {
     type: String,
-    enum: ['meta', 'google', 'mailchimp', 'stripe', 'zapier', 'hubspot', 'salesforce', 'other'],
+    enum: ['facebook', 'instagram', 'google', 'mailchimp', 'stripe', 'zapier', 'hubspot', 'salesforce', 'other'],
     required: [true, 'Integration type is required']
   },
   business: {
@@ -98,6 +109,7 @@ const integrationSchema = new Schema<IIntegration>({
 
 // --- INDEXES ---
 
+// One integration per business per type (facebook, instagram, etc.)
 integrationSchema.index({ business: 1, type: 1 }, { unique: true });
 integrationSchema.index({ business: 1 });
 integrationSchema.index({ type: 1 });
@@ -114,34 +126,35 @@ integrationSchema.virtual('connectionStatus').get(function() {
 });
 
 
-// --- STATIC METHODS (LOGIC FOR META INTEGRATION) ---
+// --- STATIC METHODS (LOGIC FOR FACEBOOK/INSTAGRAM INTEGRATION) ---
 
 /**
  * STEP 1: Saves the long-lived USER access token and puts the integration in a "pending" state.
  */
 integrationSchema.statics.upsertUserToken = async function(
-  businessId: string | Types.ObjectId, 
-  userAccessToken: string, 
-  expiresIn: number
+  businessId: string | Types.ObjectId,
+  userAccessToken: string,
+  expiresIn: number,
+  type: 'instagram' | 'facebook'
 ): Promise<IIntegration> {
   const tokenExpiresAt = new Date();
   tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + expiresIn);
   
   const integration = await this.findOneAndUpdate(
     { 
-      business: businessId, 
-      type: 'meta'
+      business: businessId,
+      type
     },
     {
       $set: {
-        name: 'Meta (Pending Page Selection)',
-        type: 'meta',
+        name: type === 'instagram' ? 'Instagram (Pending Page Selection)' : 'Facebook (Pending Page Selection)',
+        type,
         business: businessId,
         'config.accessToken': userAccessToken,
         'config.tokenExpiresAt': tokenExpiresAt,
         isActive: true,
         isConnected: false, // Not fully connected yet
-        'metadata.status': 'pending_page_selection',
+        'metadata.status': 'pending_page_selection'
       }
     },
     { new: true, upsert: true }
@@ -157,23 +170,23 @@ integrationSchema.statics.finalizeWithPageToken = async function(
   businessId: string | Types.ObjectId,
   pageId: string,
   pageName: string,
-  pageAccessToken: string
+  pageAccessToken: string,
+  type: 'instagram' | 'facebook'
 ): Promise<IIntegration | null> {
   const integration = await this.findOneAndUpdate(
     { 
-      business: businessId, 
-      type: 'meta'
+      business: businessId,
+      type
     },
     {
       $set: {
-        name: `Instagram (via Meta): ${pageName}`,
-        description: 'Instagram Business (via Meta)',
+        name: type === 'instagram' ? `Instagram: ${pageName}` : `Facebook Page: ${pageName}`,
+        description: type === 'instagram' ? 'Instagram Business' : 'Facebook Page',
         'config.accessToken': pageAccessToken, // The final PAGE token
         'config.tokenExpiresAt': null, // Page tokens generally don't expire
         isConnected: true, // Connection is now complete and active
         'metadata.pageId': pageId,
         'metadata.pageName': pageName,
-        'metadata.platform': 'instagram',
         'metadata.status': 'connected',
         lastSyncAt: new Date()
       }
@@ -187,27 +200,23 @@ integrationSchema.statics.finalizeWithPageToken = async function(
 /**
  * Disconnects the Meta integration by clearing sensitive data and updating status.
  */
-integrationSchema.statics.disconnectMeta = async function(
-  businessId: string | Types.ObjectId
+integrationSchema.statics.disconnectIntegration = async function(
+  businessId: string | Types.ObjectId,
+  type: 'instagram' | 'facebook'
 ): Promise<IIntegration | null> {
   const integration = await this.findOneAndUpdate(
-    { 
-      business: businessId, 
-      type: 'meta'
-    },
+    { business: businessId, type },
     {
       $set: {
-        name: 'Meta',
         isConnected: false,
         'config.accessToken': null,
         'config.refreshToken': null,
         'config.tokenExpiresAt': null,
-        'metadata': {}
+        'metadata.status': 'disconnected'
       }
     },
     { new: true }
   );
-  
   return integration;
 };
 
@@ -218,5 +227,4 @@ integrationSchema.set('toJSON', { virtuals: true });
 integrationSchema.set('toObject', { virtuals: true });
 
 export const Integration = model<IIntegration, IIntegrationModel>('Integration', integrationSchema);
-
 export default Integration;
