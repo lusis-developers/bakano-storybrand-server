@@ -3,13 +3,15 @@ import business from './business.model';
 import integration from './integration.model';
 import content from './content.model';
 import onboarding from './onboarding.model';
+import chat from './chat.model';
 
 const models = {
   user,
   business,
   integration,
   content,
-  onboarding
+  onboarding,
+  chat
 };
 
 export default models;
