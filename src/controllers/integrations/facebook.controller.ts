@@ -28,7 +28,7 @@ export async function facebookConnectController(req: Request, res: Response, nex
     const { access_token: longLivedUserToken, expires_in } = exchange;
     const expiresInSeconds = expires_in || 5184000; // Por defecto 60 días
 
-    const integration = await models.integration.upsertUserToken(business, longLivedUserToken, expiresInSeconds);
+    const integration = await models.integration.upsertUserToken(business, longLivedUserToken, expiresInSeconds, 'facebook');
 
     await models.business.findByIdAndUpdate(
       business,
@@ -76,7 +76,8 @@ export async function facebookSavePageController(req: Request, res: Response, ne
       business,
       pageId,
       pageName,
-      pageAccessToken
+      pageAccessToken,
+      'facebook'
     );
 
 
@@ -109,7 +110,7 @@ export async function getFacebookPostsController(req: Request, res: Response, ne
 
     const integration = await models.integration.findOne({ 
       business: businessId, 
-      type: 'meta',
+      type: 'facebook',
       isConnected: true 
     }).select('+config.accessToken');
 
@@ -178,7 +179,7 @@ export async function createPostController(req: Request, res: Response, next: Ne
 
     const integration = await models.integration.findOne({ 
       business: businessId, 
-      type: 'meta',
+      type: 'facebook',
       isConnected: true 
     }).select('+config.accessToken');
 
