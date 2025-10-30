@@ -98,7 +98,7 @@ export interface ScheduleReelResponse {
 // --- FIN INTERFACES ---
 
 export class FacebookService {
-	private readonly config: FacebookServiceConfig;
+  private readonly config: FacebookServiceConfig;
 
 	constructor(config?: Partial<FacebookServiceConfig>) {
 		const defaults: FacebookServiceConfig = {
@@ -214,12 +214,35 @@ export class FacebookService {
 				fbError?.message || "Error al obtener detalles de página"
 			);
 		}
-	}
+  }
 
-	async getPostsInsights(
-		pageAccessToken: string,
-		postIds: string[]
-	): Promise<Map<string, any>> {
+  /**
+   * Builds a stable redirect URL to the page profile picture.
+   * This does NOT call the Graph API; it only returns the URL that redirects to the current picture.
+   * You can use it directly in <img src="..." /> on the frontend.
+   */
+  getPageProfilePictureRedirectUrl(
+    pageId: string,
+    opts?: { type?: "small" | "normal" | "large"; width?: number; height?: number }
+  ): string {
+    const base = `https://graph.facebook.com/${pageId}/picture`;
+    const params: Record<string, string | number> = {};
+    if (opts?.width && opts?.height) {
+      params.width = opts.width;
+      params.height = opts.height;
+    } else if (opts?.type) {
+      params.type = opts.type;
+    }
+    const query = Object.keys(params)
+      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(String(params[k]))}`)
+      .join("&");
+    return query ? `${base}?${query}` : base;
+  }
+
+  async getPostsInsights(
+    pageAccessToken: string,
+    postIds: string[]
+  ): Promise<Map<string, any>> {
 		const lifetimeMetrics = ["post_reactions_by_type_total"];
 		const dailyMetrics = [
 			"post_impressions",
