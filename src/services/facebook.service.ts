@@ -192,10 +192,10 @@ export class FacebookService {
 		}
 	}
 
-	async getPageDetails(
-		pageAccessToken: string,
-		pageId: string
-	): Promise<{ id: string; name: string }> {
+  async getPageDetails(
+    pageAccessToken: string,
+    pageId: string
+  ): Promise<{ id: string; name: string }> {
 		const url = this.graphUrl(`/${pageId}`);
 		const params = { fields: "id,name", access_token: pageAccessToken };
 		try {
@@ -213,7 +213,37 @@ export class FacebookService {
 			throw new Error(
 				fbError?.message || "Error al obtener detalles de página"
 			);
-		}
+    }
+  }
+
+  /**
+   * Obtiene el conteo de seguidores (followers_count) y el conteo de fans/likes (fan_count)
+   * de una página de Facebook. Devuelve ambos valores para que el consumidor
+   * decida cuál utilizar.
+   */
+  async getPageFollowerStats(
+    pageAccessToken: string,
+    pageId: string
+  ): Promise<{ followers_count?: number; fan_count?: number }> {
+    const url = this.graphUrl(`/${pageId}`);
+    const params = {
+      fields: "followers_count,fan_count",
+      access_token: pageAccessToken,
+    };
+    try {
+      const response = await axios.get<{ followers_count?: number; fan_count?: number }>(url, { params });
+      return {
+        followers_count: response.data?.followers_count,
+        fan_count: response.data?.fan_count,
+      };
+    } catch (error: any) {
+      const fbError = error?.response?.data?.error;
+      console.error(
+        `[FacebookService] ❌ Error obteniendo followers de página ${pageId}:`,
+        fbError || error.message
+      );
+      throw new Error(fbError?.message || "Error al obtener followers de la página");
+    }
   }
 
   /**
