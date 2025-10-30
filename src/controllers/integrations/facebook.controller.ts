@@ -91,9 +91,22 @@ export async function facebookSavePageController(req: Request, res: Response, ne
 
     console.log(`[FacebookSavePageController] ✅ Integración finalizada para el negocio ${business} con la página ${pageName}.`);
 
+    const picture = {
+      url: facebookService.getPageProfilePictureRedirectUrl(pageId),
+      small: facebookService.getPageProfilePictureRedirectUrl(pageId, { type: 'small' }),
+      normal: facebookService.getPageProfilePictureRedirectUrl(pageId, { type: 'normal' }),
+      large: facebookService.getPageProfilePictureRedirectUrl(pageId, { type: 'large' }),
+      size150: facebookService.getPageProfilePictureRedirectUrl(pageId, { width: 150, height: 150 }),
+    };
+
     res.status(HttpStatusCode.Created).send({
       message: "Facebook Page integration completed successfully",
-      integration
+      integration,
+      page: {
+        id: pageId,
+        name: pageName,
+        picture,
+      }
     });
 
     return
