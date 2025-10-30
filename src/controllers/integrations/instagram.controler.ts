@@ -141,9 +141,25 @@ export async function instagramSavePageController(req: Request, res: Response, n
     // 7) Recuperar integración "segura" (sin tokens) para responder
     const safeIntegration = await Integration.findOne({ business, type: 'instagram' }).lean();
 
+    // 8) Enriquecer respuesta con datos de perfil IG (foto de perfil y seguidores)
+    let profile: { id: string; username?: string; profilePictureUrl?: string; followersCount?: number } | undefined;
+    try {
+      const igProfile = await instagramService.getUserProfile(instagramAccountId, pageAccessToken);
+      profile = {
+        id: igProfile.id,
+        username: igProfile.username,
+        profilePictureUrl: igProfile.profile_picture_url,
+        followersCount: igProfile.followers_count,
+      };
+    } catch (e) {
+      // No romper la respuesta si falla; solo loguear
+      console.warn('[instagramSavePageController] No se pudo obtener el perfil de IG:', (e as Error).message);
+    }
+
     return res.status(HttpStatusCode.Ok).send({
       message: "Instagram page connected successfully",
       integration: safeIntegration,
+      instagram: profile,
     });
   } catch (error) {
     next(error);
