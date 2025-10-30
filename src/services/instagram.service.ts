@@ -68,14 +68,49 @@ export interface MediaContainerStatusResponse {
 }
 
 export class InstagramService {
-	private readonly apiBase = "https://graph.facebook.com";
-	private readonly apiVersion = process.env.FACEBOOK_API_VERSION || "v24.0";
+  private readonly apiBase = "https://graph.facebook.com";
+  private readonly apiVersion = process.env.FACEBOOK_API_VERSION || "v24.0";
 
-	/**
-	 * Fetch latest media for an Instagram Business account (igUserId)
-	 */
-	async getUserMedia(
-		igUserId: string,
+  /**
+   * Obtiene información básica del perfil de un usuario de Instagram Business/Creator.
+   * Devuelve id, username, profile_picture_url y followers_count.
+   */
+  async getUserProfile(
+    igUserId: string,
+    accessToken: string
+  ): Promise<{ id: string; username?: string; profile_picture_url?: string; followers_count?: number }> {
+    const url = `${this.apiBase}/${this.apiVersion}/${igUserId}`;
+    const params = {
+      fields: "id,username,profile_picture_url,followers_count",
+      access_token: accessToken,
+    };
+
+    try {
+      const { data } = await axios.get(url, { params });
+      return {
+        id: data?.id,
+        username: data?.username,
+        profile_picture_url: data?.profile_picture_url,
+        followers_count: data?.followers_count,
+      };
+    } catch (error: any) {
+      const fbError = error?.response?.data?.error;
+      console.error(
+        `[InstagramService] Error en getUserProfile (IG User ${igUserId}):`,
+        fbError || error.message
+      );
+      throw new CustomError(
+        fbError?.message || "Error al obtener el perfil de Instagram",
+        error?.response?.status || HttpStatusCode.InternalServerError
+      );
+    }
+  }
+
+  /**
+   * Fetch latest media for an Instagram Business account (igUserId)
+   */
+  async getUserMedia(
+    igUserId: string,
 		accessToken: string,
 		limit: number = 10
 	): Promise<InstagramMediaItem[]> {
