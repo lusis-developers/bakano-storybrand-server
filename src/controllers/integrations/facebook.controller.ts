@@ -318,3 +318,118 @@ export async function createFacebookVideoPostController(req: Request, res: Respo
     next(error); // Pass to error middleware
   }
 }
+
+export async function getFacebookScheduledPostsController(req: Request, res: Response, next: NextFunction) {
+  try {
+    // 1. OBTENER Y VALIDAR PARÁMETROS
+    const { businessId } = req.params;
+    // Filtros/profesional: limit, rango de fechas (from/to), búsqueda por texto (q), orden (sort)
+    const { limit: qLimit, from, to, q, sort } = req.query as Record<string, string | undefined>;
+    const limit = Math.min(Math.max(Number(qLimit || 25), 1), 100); // 1..100
+
+    const parseTsSeconds = (val?: string): number | undefined => {
+      if (!val) return undefined;
+      const n = Number(val);
+      if (!Number.isNaN(n) && Number.isFinite(n)) {
+        // Si viene en segundos, lo usamos directo; si parece milisegundos, convertimos a segundos
+        return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
+      }
+      const ms = Date.parse(val);
+      return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000);
+    };
+    const fromSec = parseTsSeconds(from);
+    const toSec = parseTsSeconds(to);
+    const queryText = (q || "").toLowerCase().trim();
+    const sortOrder = (sort === 'desc' || sort === 'asc') ? sort : 'asc';
+
+    if (!businessId || !Types.ObjectId.isValid(businessId)) {
+      return next(new CustomError(
+        "Invalid or missing businessId parameter", 
+        HttpStatusCode.BadRequest
+      ));
+    }
+
+    // 2. BUSCAR INTEGRACIÓN
+    const integration = await models.integration.findOne({ 
+      business: businessId, 
+      type: 'facebook',
+      isConnected: true 
+    }).select('+config.accessToken');
+
+    if (!integration || !integration.config.accessToken || !integration.metadata?.pageId) {
+      return next(new CustomError(
+        'Active Facebook integration not found or is incomplete for this business', 
+        HttpStatusCode.NotFound
+      ));
+    }
+
+    const pageAccessToken = integration.config.accessToken;
+    const pageId = integration.metadata.pageId;
+
+    // 3. LLAMAR AL SERVICIO
+    // (Nota: No pedimos insights porque no existen para posts no publicados)
+    const scheduledPosts = await facebookService.getScheduledPagePosts(
+      pageAccessToken,
+      pageId,
+      limit
+    );
+
+    // 3.1 Aplicar filtros en memoria (Facebook no soporta todos estos filtros en el endpoint)
+    let filtered = scheduledPosts.filter(p => {
+      if (fromSec && p.scheduled_publish_time < fromSec) return false;
+      if (toSec && p.scheduled_publish_time > toSec) return false;
+      if (queryText) {
+        const msg = (p.message || '').toLowerCase();
+        if (!msg || !msg.includes(queryText)) return false;
+      }
+      return true;
+    });
+
+    // 3.2 Ordenar
+    filtered.sort((a, b) => {
+      return sortOrder === 'desc'
+        ? b.scheduled_publish_time - a.scheduled_publish_time
+        : a.scheduled_publish_time - b.scheduled_publish_time;
+    });
+
+    // 3.3 Métricas profesionales
+    const count = filtered.length;
+    const times = filtered.map(p => p.scheduled_publish_time);
+    const range = times.length
+      ? { from: Math.min(...times), to: Math.max(...times) }
+      : { from: null, to: null };
+    const byDayMap = new Map<string, number>();
+    for (const p of filtered) {
+      const day = new Date(p.scheduled_publish_time * 1000).toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+      byDayMap.set(day, (byDayMap.get(day) || 0) + 1);
+    }
+    const byDay = Object.fromEntries(byDayMap);
+
+    // 4. RESPONDER
+    if (filtered.length === 0) {
+      return res.status(HttpStatusCode.Ok).send({ 
+        message: `Found 0 scheduled posts for page ${pageId}`,
+        page: { id: pageId, name: integration.metadata?.pageName || undefined },
+        count: 0,
+        filters: { limit, from: fromSec, to: toSec, q: queryText || undefined, sort: sortOrder },
+        stats: { range, byDay },
+        posts: [] 
+      });
+    }
+
+    return res.status(HttpStatusCode.Ok).send({
+      message: `Found ${count} scheduled posts for page ${pageId}`,
+      page: { id: pageId, name: integration.metadata?.pageName || undefined },
+      count,
+      filters: { limit, from: fromSec, to: toSec, q: queryText || undefined, sort: sortOrder },
+      stats: { range, byDay },
+      posts: filtered
+    });
+
+  } catch (error: any) {
+    // 5. MANEJO DE ERRORES
+    console.error('[GetFacebookScheduledPostsController] ❌ Error:', error.message);
+    // El servicio ya simplificó el error, solo lo pasamos al middleware
+    next(error);
+  }
+}
