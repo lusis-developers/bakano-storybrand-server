@@ -95,6 +95,30 @@ export interface ScheduleReelPayload {
 export interface ScheduleReelResponse {
 	id: string; // ID del video programado
 }
+
+export interface ScheduledPagePost {
+  id: string;
+  scheduled_publish_time: number; // UNIX timestamp
+  message?: string;
+  // Media y metadatos útiles para previsualizar el contenido programado
+  full_picture?: string; // Para fotos/enlaces con imagen de preview
+  attachments?: {
+    data: Array<{
+      type?: string; // ej. photo, video_inline, link, album
+      url?: string; // URL del attachment (link/CTA)
+      media?: {
+        image?: { src: string; height: number; width: number };
+        source?: string; // Para videos: URL del origen (cuando disponible)
+      };
+      target?: { id?: string; url?: string };
+      subattachments?: { data: Array<any> };
+    }>;
+  };
+  status_type?: string;
+  is_published?: boolean;
+  created_time?: string;
+  // permalink_url generalmente no estará disponible hasta que se publique
+}
 // --- FIN INTERFACES ---
 
 export class FacebookService {
@@ -483,6 +507,57 @@ export class FacebookService {
 			throw new Error(fbError?.message || "Error al crear post de video");
 		}
 	}
+
+  async getScheduledPagePosts(
+    pageAccessToken: string,
+    pageId: string,
+    limit: number = 25
+  ): Promise<ScheduledPagePost[]> {
+    const url = this.graphUrl(`/${pageId}/scheduled_posts`); // <-- El endpoint clave
+    const params = {
+      // Campos ampliados para traer previews de fotos y videos (cuando estén disponibles)
+      fields:
+        [
+          "id",
+          "scheduled_publish_time",
+          "message",
+          "full_picture",
+          "attachments{media,type,url,subattachments}",
+          "status_type",
+          "is_published",
+          "created_time",
+          // "permalink_url" suele no existir hasta que se publica, pero lo solicitamos por si acaso
+          "permalink_url",
+        ].join(","),
+      limit,
+      access_token: pageAccessToken,
+    };
+
+    try {
+      const response = await axios.get<{ data: ScheduledPagePost[] }>(url, {
+        params,
+      });
+      return response.data.data;
+    } catch (error: any) {
+      const fbError = error?.response?.data?.error;
+      console.error(
+        `[FacebookService] ❌ Error obteniendo posts programados de ${pageId}:`,
+        fbError || error.message
+      );
+
+      // Si la API de FB devuelve un error específico (ej. permisos), lo lanzamos
+      if (fbError) {
+         // Un error común es de permisos si falta 'pages_read_engagement'
+         if (fbError.code === 10 || fbError.code === 200) { 
+           console.error("[FacebookService] ⚠️  Error de permisos. Asegúrese de tener 'pages_read_engagement'.");
+         }
+        throw new Error(fbError.message);
+      }
+      
+      throw new Error("Error al obtener posts programados");
+    }
+  }
+
 }
 
 export const facebookService = new FacebookService();
