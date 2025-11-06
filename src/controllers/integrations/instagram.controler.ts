@@ -249,7 +249,7 @@ export async function createInstagramPhotoPostController(
 		if (!files || files.length === 0) {
 			return next(
 				new CustomError(
-					"No image file sprovided in 'images', field",
+					"No image files provided in 'images' field",
 					HttpStatusCode.BadRequest
 				)
 			);
@@ -268,9 +268,17 @@ export async function createInstagramPhotoPostController(
 			`[IGPhotoController] Servicio completó la publicación tipo: ${result.type}.`
 		);
 
+		const msg = result.is_scheduled
+			? `Instagram ${result.type} post scheduled successfully`
+			: `Instagram ${result.type} post created successfully`;
+
 		res.status(HttpStatusCode.Created).send({
-			message: `Instagram ${result.type} post created succesfully`,
-			data: result.data,
+			message: msg,
+			data: {
+				...result.data,
+				container_id: result.container_id,
+				is_scheduled: !!result.is_scheduled,
+			},
 		});
 
 		return;
