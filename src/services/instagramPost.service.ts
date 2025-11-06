@@ -51,18 +51,92 @@ export class InstagramPostService {
 		);
 		const cloudinaryResults = await Promise.all(uploadPromises);
 
-		const { caption } = payloadData;
+		const { caption, published, scheduled_publish_time } = payloadData;
+
+		// Parseo y validación de scheduling
+		const scheduleTimestamp = scheduled_publish_time
+			? typeof scheduled_publish_time === "string"
+				? parseInt(scheduled_publish_time, 10)
+				: scheduled_publish_time
+			: undefined;
+		const isValidTimestamp =
+			scheduleTimestamp && !isNaN(scheduleTimestamp) && scheduleTimestamp > 0;
+		const wantsToSchedule =
+			(published === false || published === "false") && isValidTimestamp;
+
+		// Validaciones profesionales de ventana de programación (mínimo 15 min, máximo 75 días)
+		if (wantsToSchedule) {
+			const nowSec = Math.floor(Date.now() / 1000);
+			const minLeadSec = 15 * 60; // 15 minutos
+			const maxLeadSec = 75 * 24 * 60 * 60; // 75 días
+			if (scheduleTimestamp! < nowSec + minLeadSec) {
+				throw new CustomError(
+					"scheduled_publish_time debe ser al menos 15 minutos en el futuro",
+					HttpStatusCode.BadRequest
+				);
+			}
+			if (scheduleTimestamp! > nowSec + maxLeadSec) {
+				throw new CustomError(
+					"scheduled_publish_time no puede exceder 75 días desde ahora",
+					HttpStatusCode.BadRequest
+				);
+			}
+		}
 
 		if (cloudinaryResults.length === 1) {
 			const payload: CreateMediaContainerPayload = {
 				image_url: cloudinaryResults[0].secure_url,
 				caption: caption,
+				...(wantsToSchedule
+					? { published: false, scheduled_publish_time: scheduleTimestamp! }
+					: {}),
 			};
 			const container = await instagramService.createMediaContainer(
 				igUserId,
 				accessToken,
 				payload
 			);
+			if (wantsToSchedule) {
+				// No publicar ahora; devolver el contenedor programado
+				return {
+					type: "photo",
+					data: container, // Devuelve el objeto del contenedor creado
+					container_id: container.id,
+					is_scheduled: true,
+				};
+			}
+
+			// Publicación inmediata
+			let statusResult: MediaContainerStatusResponse | null = null;
+			const maxRetries = 20;
+			const delayBetweenChecks = 6000;
+
+			for (let attempt = 1; attempt <= maxRetries; attempt++) {
+				statusResult = await instagramService.checkContainerStatus(
+					container.id,
+					accessToken
+				);
+				if (statusResult.status_code === "FINISHED") {
+					break;
+				}
+				if (
+					statusResult.status_code === "ERROR" ||
+					statusResult.status_code === "EXPIRED"
+				) {
+					throw new CustomError(
+						`IG container failed: ${statusResult.status}`,
+						HttpStatusCode.InternalServerError
+					);
+				}
+				if (attempt === maxRetries) {
+					throw new CustomError(
+						`Instagram media container ${container.id} did not finish processing in time. Last status: ${statusResult?.status_code}`,
+						HttpStatusCode.GatewayTimeout
+					);
+				}
+				await sleep(delayBetweenChecks);
+			}
+
 			const result = await instagramService.publishMediaContainer(
 				igUserId,
 				accessToken,
@@ -93,12 +167,55 @@ export class InstagramPostService {
 				media_type: "CAROUSEL",
 				children: childContainerIds,
 				caption: caption,
+				...(wantsToSchedule
+					? { published: false, scheduled_publish_time: scheduleTimestamp! }
+					: {}),
 			};
 			const parentContainer = await instagramService.createMediaContainer(
 				igUserId,
 				accessToken,
 				parentPayload
 			);
+
+			if (wantsToSchedule) {
+				return {
+					type: "carousel",
+					data: parentContainer,
+					container_id: parentContainer.id,
+					is_scheduled: true,
+				};
+			}
+
+			// Publicación inmediata del carrusel
+			let statusResult: MediaContainerStatusResponse | null = null;
+			const maxRetries = 20;
+			const delayBetweenChecks = 6000;
+
+			for (let attempt = 1; attempt <= maxRetries; attempt++) {
+				statusResult = await instagramService.checkContainerStatus(
+					parentContainer.id,
+					accessToken
+				);
+				if (statusResult.status_code === "FINISHED") {
+					break;
+				}
+				if (
+					statusResult.status_code === "ERROR" ||
+					statusResult.status_code === "EXPIRED"
+				) {
+					throw new CustomError(
+						`IG container failed: ${statusResult.status}`,
+						HttpStatusCode.InternalServerError
+					);
+				}
+				if (attempt === maxRetries) {
+					throw new CustomError(
+						`Instagram media container ${parentContainer.id} did not finish processing in time. Last status: ${statusResult?.status_code}`,
+						HttpStatusCode.GatewayTimeout
+					);
+				}
+				await sleep(delayBetweenChecks);
+			}
 
 			const result = await instagramService.publishMediaContainer(
 				igUserId,
