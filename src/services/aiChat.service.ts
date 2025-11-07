@@ -70,10 +70,11 @@ export class AIChatService {
 						},
 					};
 				} else {
-					// Gemini
+				// Gemini
 
-					console.log("[AIChatService] ✨ Intentando con Gemini...");
-					const chosenModel = model || "gemini-1.5-flash"; // o 2.5 flash lite
+				console.log("[AIChatService] ✨ Intentando con Gemini...");
+				// Usar modelos seguros por defecto para el SDK actual
+				const chosenModel = model || "gemini-2.0-flash";
 					const { reply, usage } =
 						await geminiService.generateChatReply(
 							systemPrompt,
