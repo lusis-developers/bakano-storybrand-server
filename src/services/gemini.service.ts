@@ -1,13 +1,28 @@
-import { GenerativeModel, GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import type { MessageRole } from "../models/chat.model";
 
 export class GeminiService {
-	private genAI: GoogleGenerativeAI;
-	private model: any;
+    private ai: any;
 
-	private getModel(modelName: string = "gemini-1.5-flash"): GenerativeModel {
-		return this.genAI.getGenerativeModel({ model: modelName });
-	}
+    private getModelName(modelName?: string): string {
+        // Modelos seguros para v1beta del SDK actual
+        const safeModels = new Set([
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
+            "gemini-2.0-pro",
+        ]);
+
+        const requested = (modelName?.trim() || "gemini-2.0-flash").toLowerCase();
+        const aliasMap: Record<string, string> = {
+            // Aliases conocidos
+            "gemini-1.5-flash": "gemini-2.0-flash", // redirigimos a familia 2.0 para evitar NOT_FOUND
+            "gemini-1.5-pro": "gemini-2.0-pro",
+            "gemini-2.5-flash": "gemini-2.0-flash", // algunos entornos no exponen 2.5 en v1beta
+        };
+
+        const mapped = aliasMap[requested] || requested;
+        return safeModels.has(mapped) ? mapped : "gemini-2.0-flash";
+    }
 
 	constructor() {
 		if (!process.env.GEMINI_API_KEY) {
@@ -16,11 +31,61 @@ export class GeminiService {
 			);
 		}
 
-		this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-		this.model = this.genAI.getGenerativeModel({
-			model: "gemini-2.5-flash-lite",
-		});
+		// Inicializa cliente del nuevo SDK
+		this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 	}
+
+    private async generateTextWithFallback(model: string, contents: string): Promise<string> {
+        const primary = this.getModelName(model);
+        const fallback1 = "gemini-2.0-flash";
+        const fallback2 = "gemini-2.0-pro";
+
+        // 1) Intento primario
+        try {
+            const response = await this.ai.models.generateContent({ model: primary, contents });
+            return response?.text || "";
+        } catch (error: any) {
+            const status = error?.error?.status || error?.error?.code;
+            const message = error?.error?.message || String(error);
+            const notFound = status === "NOT_FOUND" || status === 404;
+            const unsupported = /not supported/i.test(message || "");
+
+            if (notFound || unsupported) {
+                console.warn(
+                    `Modelo no disponible (${primary}). Fallback a '${fallback1}'. Detalle: ${message}`
+                );
+                // 2) Primer fallback
+                try {
+                    const response = await this.ai.models.generateContent({ model: fallback1, contents });
+                    return response?.text || "";
+                } catch (error2: any) {
+                    const status2 = error2?.error?.status || error2?.error?.code;
+                    const message2 = error2?.error?.message || String(error2);
+                    const notFound2 = status2 === "NOT_FOUND" || status2 === 404;
+                    const unsupported2 = /not supported/i.test(message2 || "");
+                    console.warn(
+                        `Fallback '${fallback1}' también falló. Intentando '${fallback2}'. Detalle: ${message2}`
+                    );
+                    // 3) Segundo fallback
+                    try {
+                        const response = await this.ai.models.generateContent({ model: fallback2, contents });
+                        return response?.text || "";
+                    } catch (error3: any) {
+                        console.error(
+                            `Falló segundo fallback '${fallback2}'. Error final:`,
+                            error3?.error || error3
+                        );
+                        // Propagamos error más informativo
+                        throw new Error(
+                            `Modelos no disponibles. Intentos: ${primary} -> ${fallback1} -> ${fallback2}. Último error: ${message2}`
+                        );
+                    }
+                }
+            }
+            // Errores distintos (p.ej. permisos) se propagan
+            throw error;
+        }
+    }
 
 	/**
 	 * Genera un BrandScript completo basado en las respuestas del usuario
@@ -41,27 +106,11 @@ export class GeminiService {
 		const prompt = this.buildBrandScriptPrompt(answers, onboardingContext);
 
 		try {
-			const result = await this.model.generateContent({
-				contents: [
-					{
-						role: "user",
-						parts: [
-							{
-								text: `Eres un experto en marketing y comunicación que ayuda a crear BrandScripts efectivos siguiendo el framework de StoryBrand de Donald Miller. Generas contenido claro, persuasivo y orientado a resultados en español.\n\n${prompt}`,
-							},
-						],
-					},
-				],
-				generationConfig: {
-					temperature: 0.7,
-					topK: 40,
-					topP: 0.95,
-					maxOutputTokens: 2000,
-				},
-			});
-
-			const response = await result.response;
-			return response.text() || "Error al generar el BrandScript";
+			const text = await this.generateTextWithFallback(
+				this.getModelName("gemini-2.5-flash"),
+				`Eres un experto en marketing y comunicación que ayuda a crear BrandScripts efectivos siguiendo el framework de StoryBrand de Donald Miller. Generas contenido claro, persuasivo y orientado a resultados en español.\n\n${prompt}`
+			);
+			return text || "Error al generar el BrandScript";
 		} catch (error) {
 			console.error("Error al generar BrandScript con Gemini:", error);
 			throw new Error("Error al generar el BrandScript");
@@ -85,27 +134,11 @@ export class GeminiService {
 		};
 
 		try {
-			const result = await this.model.generateContent({
-				contents: [
-					{
-						role: "user",
-						parts: [
-							{
-								text: `Eres un copywriter experto que crea contenido de marketing efectivo en español siguiendo los principios de StoryBrand.\n\n${prompts[contentType]}\n\n${brandScript}`,
-							},
-						],
-					},
-				],
-				generationConfig: {
-					temperature: 0.8,
-					topK: 40,
-					topP: 0.95,
-					maxOutputTokens: 1500,
-				},
-			});
-
-			const response = await result.response;
-			return response.text() || "Error al generar contenido";
+			const text = await this.generateTextWithFallback(
+				this.getModelName("gemini-2.5-flash"),
+				`Eres un copywriter experto que crea contenido de marketing efectivo en español siguiendo los principios de StoryBrand.\n\n${prompts[contentType]}\n\n${brandScript}`
+			);
+			return text || "Error al generar contenido";
 		} catch (error) {
 			console.error("Error al generar contenido de marketing:", error);
 			throw new Error("Error al generar el contenido de marketing");
@@ -139,27 +172,11 @@ ${brandScript}
 `;
 
 		try {
-			const result = await this.model.generateContent({
-				contents: [
-					{
-						role: "user",
-						parts: [
-							{
-								text: `Eres un consultor experto en StoryBrand que analiza y mejora BrandScripts para maximizar su efectividad.\n\n${prompt}`,
-							},
-						],
-					},
-				],
-				generationConfig: {
-					temperature: 0.6,
-					topK: 40,
-					topP: 0.95,
-					maxOutputTokens: 2000,
-				},
-			});
-
-			const response = await result.response;
-			return response.text() || "Error al analizar el BrandScript";
+			const text = await this.generateTextWithFallback(
+				this.getModelName("gemini-2.5-flash"),
+				`Eres un consultor experto en StoryBrand que analiza y mejora BrandScripts para maximizar su efectividad.\n\n${prompt}`
+			);
+			return text || "Error al analizar el BrandScript";
 		} catch (error) {
 			console.error("Error al analizar BrandScript:", error);
 			throw new Error("Error al analizar el BrandScript");
@@ -229,31 +246,17 @@ Responde SOLO con el JSON, sin texto adicional.
 		config: { temperature: number; maxOutputTokens: number; model?: string }
 	): Promise<{ reply: string; usage?: undefined }> {
 		try {
-			// Usamos el helper con el modelo específico del chat
-			const chosenModel = this.getModel(
-				config.model || "gemini-1.5-flash"
-			);
-
-			// Adaptar historial para Gemini (formato de texto plano)
+			// Historial adaptado a texto plano
 			const textPrompt = [
 				`SYSTEM PROMPT: ${systemPrompt}`,
 				...context.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
 			].join("\n\n");
 
-			const result = await chosenModel.generateContent({
-				contents: [{ role: "user", parts: [{ text: textPrompt }] }],
-				generationConfig: {
-					temperature: config.temperature,
-					maxOutputTokens: config.maxOutputTokens,
-				},
-			});
-
-			const response = await result.response;
-			const reply = response.text() || "";
-
-			// El SDK de Gemini (v1) no expone fácilmente el conteo de tokens aquí.
-			// Devolvemos 'undefined' para 'usage' para mantener la interfaz.
-			return { reply, usage: undefined };
+			const reply = await this.generateTextWithFallback(
+				this.getModelName(config.model || "gemini-2.5-flash"),
+				textPrompt
+			);
+			return { reply: reply || "", usage: undefined };
 		} catch (error) {
 			console.error("Error al generar chat con Gemini:", error);
 			throw new Error("Error al generar respuesta de Gemini");
