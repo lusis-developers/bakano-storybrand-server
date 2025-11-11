@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { HttpStatusCode } from 'axios';
 import bcrypt from 'bcryptjs';
 import models from '../models';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 
 /**
  * @description Creates a new user account (already verified)
@@ -161,22 +161,55 @@ export async function adminDeleteUserAccountController(req: Request, res: Respon
       return;
     }
 
-    // 3. Delete all associated data
-    // This is where you would delete all data associated with the user
-    // For example, delete all brandscripts, businesses, content, etc.
-    // You can use Promise.all to run these operations in parallel
-    await Promise.all([
-      // Delete businesses
-      models.business.deleteMany({ userId: userId }),
-      // Delete content
-      models.content.deleteMany({ userId: userId }),
-      // Delete onboarding
-      models.onboarding.deleteMany({ userId: userId }),
-      // Delete integrations
-      models.integration.deleteMany({ userId: userId }),
-      // Finally delete the user
-      models.user.findByIdAndDelete(userId)
-    ]);
+    // 3. Delete all associated data with proper cascade using a transaction
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        // Find businesses owned by the user
+        const businesses = await models.business
+          .find({ owner: userId })
+          .select('_id')
+          .session(session);
+
+        const businessIds = businesses.map((b: any) => b._id);
+
+        // Delete content, chats, and integrations tied to those businesses
+        await Promise.all([
+          models.content.deleteMany({ business: { $in: businessIds } }).session(session),
+          models.chat.deleteMany({ business: { $in: businessIds } }).session(session),
+          models.integration.deleteMany({ business: { $in: businessIds } }).session(session),
+        ]);
+
+        // Delete onboarding record for this user
+        await models.onboarding.deleteMany({ user: userId }).session(session);
+
+        // Remove the user as employee in any other businesses
+        await models.business.updateMany(
+          { employees: userId },
+          { $pull: { employees: userId } }
+        ).session(session);
+
+        // Remove user from chat participants and anonymize message authorship
+        await models.chat.updateMany(
+          { participants: userId },
+          { $pull: { participants: userId } }
+        ).session(session);
+
+        await models.chat.updateMany(
+          { 'messages.createdBy': userId },
+          { $set: { 'messages.$[m].createdBy': null } },
+          { arrayFilters: [{ 'm.createdBy': new Types.ObjectId(userId) }] } as any
+        ).session(session);
+
+        // Delete businesses owned by the user
+        await models.business.deleteMany({ owner: userId }).session(session);
+
+        // Finally delete the user
+        await models.user.findByIdAndDelete(userId).session(session);
+      });
+    } finally {
+      session.endSession();
+    }
 
     res.status(HttpStatusCode.Ok).send({
       message: 'User account and all associated data deleted successfully'

@@ -9,6 +9,7 @@ import facebookRouter from './integrations/facebook.route'
 import instagramRouter from './integrations/instagram.route'
 import integrationsRouter from './integrations/index.route'
 import chatRouter from './chat.route'
+import subscriptionRouter from './subscription.route'
 
 
 
@@ -27,6 +28,7 @@ function routerApi(app: Application) {
   router.use("/integrations/instagram", instagramRouter)
   router.use("/integrations", integrationsRouter)
   router.use("/chats", chatRouter)
+  router.use("/subscriptions", subscriptionRouter)
 }
 
 export default routerApi;
