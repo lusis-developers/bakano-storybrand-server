@@ -2,6 +2,24 @@ import { Schema, model, Document, Types } from 'mongoose';
 
 
 
+export interface ISubscription {
+  plan: 'free' | 'starter' | 'pro' | 'enterprise';
+  status: 'free' | 'trialing' | 'active' | 'past_due' | 'canceled' | 'paused' | 'incomplete';
+  provider?: 'stripe' | 'manual' | 'payphone';
+  customerId?: string; // ID del cliente en el proveedor (p.ej., Stripe)
+  subscriptionId?: string; // ID de la suscripción en el proveedor
+  billingInterval?: 'monthly' | 'yearly';
+  currentPeriodStart?: Date;
+  currentPeriodEnd?: Date;
+  trialStart?: Date;
+  trialEnd?: Date;
+  cancelAtPeriodEnd?: boolean;
+  canceledAt?: Date;
+  nextBillingDate?: Date;
+  paymentMethodId?: string; // Referencia al método de pago (token/ID)
+  providerMetadata?: Record<string, any>; // Datos específicos del proveedor (flexible para cambios futuros)
+}
+
 export interface IUser extends Document {
   firstName: string;
   lastName: string;
@@ -14,6 +32,7 @@ export interface IUser extends Document {
   verificationToken?: string;
   verificationTokenExpires?: Date;
   onboarding?: Types.ObjectId;
+  subscription?: ISubscription;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -78,6 +97,65 @@ const userSchema = new Schema<IUser>({
   onboarding: {
     type: Schema.Types.ObjectId,
     ref: 'Onboarding'
+  },
+  // Información de suscripción y trial de 7 días
+  subscription: {
+    plan: {
+      type: String,
+      enum: ['free', 'starter', 'pro', 'enterprise'],
+      default: 'free'
+    },
+    status: {
+      type: String,
+      enum: ['free', 'trialing', 'active', 'past_due', 'canceled', 'paused', 'incomplete'],
+      default: 'free'
+    },
+    provider: {
+      type: String,
+      enum: ['stripe', 'manual', 'payphone']
+    },
+    customerId: {
+      type: String,
+      select: false
+    },
+    subscriptionId: {
+      type: String,
+      select: false
+    },
+    billingInterval: {
+      type: String,
+      enum: ['monthly', 'yearly']
+    },
+    currentPeriodStart: {
+      type: Date
+    },
+    currentPeriodEnd: {
+      type: Date
+    },
+    trialStart: {
+      type: Date
+    },
+    trialEnd: {
+      type: Date
+    },
+    cancelAtPeriodEnd: {
+      type: Boolean,
+      default: false
+    },
+    canceledAt: {
+      type: Date
+    },
+    nextBillingDate: {
+      type: Date
+    },
+    paymentMethodId: {
+      type: String,
+      select: false
+    },
+    providerMetadata: {
+      type: Schema.Types.Mixed,
+      select: false
+    }
   }
 }, {
   timestamps: true,
@@ -109,6 +187,11 @@ userSchema.virtual('age').get(function() {
 
 userSchema.set('toJSON', { virtuals: true });
 userSchema.set('toObject', { virtuals: true });
+
+// Índices útiles para gestionar estados y renovaciones/trials
+userSchema.index({ 'subscription.status': 1 });
+userSchema.index({ 'subscription.trialEnd': 1 });
+userSchema.index({ 'subscription.currentPeriodEnd': 1 });
 
 export const User = model<IUser>('User', userSchema);
 
