@@ -8,6 +8,7 @@ import { facebookService } from "../../services/facebook.service";
 import { instagramService } from "../../services/instagram.service";
 import { Types } from "mongoose";
 import { instagramPostService } from "../../services/instagramPost.service";
+import type { CreateMediaContainerPayload } from "../../services/instagram.service";
 
 export async function instagramConnectController(req: Request, res: Response, next: NextFunction) {
   try {
@@ -289,6 +290,97 @@ export async function createInstagramPhotoPostController(
 		);
 		next(error);
 	}
+}
+
+export async function testInstagramPublishController(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { businessId } = req.params;
+    const { imageUrl, caption } = (req.body || {}) as {
+      imageUrl?: string;
+      caption?: string;
+    };
+
+    console.log('[IGTestPublish] Incoming request', { businessId, imageUrl, caption });
+
+    if (!businessId || !Types.ObjectId.isValid(businessId)) {
+      return next(
+        new CustomError(
+          "Invalid or missing businessId",
+          HttpStatusCode.BadRequest
+        )
+      );
+    }
+
+    const integration = await Integration.findOne({
+      business: businessId,
+      type: "instagram",
+      isConnected: true,
+    })
+      .select("+config.accessToken metadata.instagramAccountId")
+      .lean();
+
+    console.log('[IGTestPublish] Integration query finished', { found: !!integration });
+
+    if (!integration) {
+      return next(
+        new CustomError(
+          "Active Instagram integration not found for this business",
+          HttpStatusCode.NotFound
+        )
+      );
+    }
+
+    const igUserId = (integration as any).metadata?.instagramAccountId as
+      | string
+      | undefined;
+    const accessToken = (integration as any).config?.accessToken as
+      | string
+      | undefined;
+
+    console.log('[IGTestPublish] Integration details', { igUserId, hasAccessToken: !!accessToken });
+
+    if (!igUserId || !accessToken) {
+      return next(
+        new CustomError(
+          "Instagram integration incomplete for this business",
+          HttpStatusCode.BadRequest
+        )
+      );
+    }
+
+    const url = imageUrl && typeof imageUrl === "string" && imageUrl.length > 0
+      ? imageUrl
+      : "https://via.placeholder.com/640x640.png?text=API+Test";
+
+    const payload: CreateMediaContainerPayload = {
+      image_url: url,
+      caption: caption || "API test post. Please ignore.",
+      published: false,
+    };
+
+    console.log('[IGTestPublish] Creating media container', { igUserId, image_url: url });
+
+    const container = await instagramService.createMediaContainer(
+      igUserId,
+      accessToken,
+      payload
+    );
+
+    console.log('[IGTestPublish] Media container created', { containerId: container.id });
+
+    res.status(HttpStatusCode.Created).send({
+      message: "Instagram test media container created successfully",
+      data: container,
+    });
+    return;
+  } catch (error) {
+    console.error('[IGTestPublish] Error', { error });
+    next(error);
+  }
 }
 
 /**

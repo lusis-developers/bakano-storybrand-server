@@ -119,6 +119,16 @@ export interface ScheduledPagePost {
   created_time?: string;
   // permalink_url generalmente no estará disponible hasta que se publique
 }
+
+export interface AdAccountInfo {
+  id: string;
+  name: string;
+  account_id: string; // El ID numérico
+  business?: {
+    id: string;
+    name: string;
+  };
+}
 // --- FIN INTERFACES ---
 
 export class FacebookService {
@@ -555,6 +565,35 @@ export class FacebookService {
       }
       
       throw new Error("Error al obtener posts programados");
+    }
+  }
+
+	/**
+   * Obtiene las cuentas publicitarias (Ad Accounts) asociadas a un Token de Usuario.
+   * REQUIERE el permiso 'ads_management' o 'ads_read'.
+   * @param userAccessToken Un Token de Acceso de USUARIO (no de página).
+   * @returns Una lista de cuentas publicitarias.
+   */
+  async getAdAccounts(userAccessToken: string): Promise<AdAccountInfo[]> {
+    const url = this.graphUrl("/me/adaccounts");
+    const params = {
+      fields: "id,name,account_id,business{id,name}", // Campos útiles
+      limit: 250, // Traer un límite alto
+      access_token: userAccessToken,
+    };
+    try {
+      const response = await axios.get<{ data: AdAccountInfo[] }>(url, {
+        params,
+      });
+      return response.data.data;
+    } catch (error: any) {
+      const fbError = error?.response?.data?.error;
+      console.error(
+        "[FacebookService] ❌ Error obteniendo Ad Accounts:",
+        fbError || error.message
+      );
+      // Lanza el error original para que el controlador lo atrape
+      throw error; 
     }
   }
 
