@@ -17,6 +17,14 @@ export interface IBusiness extends Document {
   owner: Types.ObjectId;
   employees?: Types.ObjectId[];
   integrations?: Types.ObjectId[];
+  teamMembers?: Array<{
+    user: Types.ObjectId;
+    role: 'owner' | 'admin' | 'collaborator' | 'viewer';
+    status: 'invited' | 'active' | 'removed';
+    invitedBy?: Types.ObjectId;
+    invitedAt?: Date;
+    joinedAt?: Date;
+  }>;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -91,6 +99,14 @@ const businessSchema = new Schema<IBusiness>({
     type: Schema.Types.ObjectId,
     ref: 'User'
   }],
+  teamMembers: [{
+    user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    role: { type: String, enum: ['owner', 'admin', 'collaborator', 'viewer'], default: 'collaborator' },
+    status: { type: String, enum: ['invited', 'active', 'removed'], default: 'invited' },
+    invitedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    invitedAt: { type: Date, default: Date.now },
+    joinedAt: { type: Date }
+  }],
   integrations: [{
     type: Schema.Types.ObjectId,
     ref: 'Integration'
@@ -108,15 +124,20 @@ const businessSchema = new Schema<IBusiness>({
 businessSchema.index({ owner: 1 });
 businessSchema.index({ name: 1 });
 businessSchema.index({ isActive: 1 });
+businessSchema.index({ 'teamMembers.user': 1 });
 
 // Virtual para obtener el número de empleados
-businessSchema.virtual('employeeCount').get(function() {
+businessSchema.virtual('employeeCount').get(function(this: any) {
   return this.employees ? this.employees.length : 0;
 });
 
 // Virtual para obtener el número de integraciones
-businessSchema.virtual('integrationCount').get(function() {
+businessSchema.virtual('integrationCount').get(function(this: any) {
   return this.integrations ? this.integrations.length : 0;
+});
+
+businessSchema.virtual('teamCount').get(function(this: any) {
+  return this.teamMembers ? this.teamMembers.length : 0;
 });
 
 businessSchema.set('toJSON', { virtuals: true });
