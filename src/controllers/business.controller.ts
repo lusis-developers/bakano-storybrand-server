@@ -3,6 +3,7 @@ import { HttpStatusCode } from 'axios';
 import { Types } from 'mongoose';
 import models from '../models';
 import type { AuthRequest } from '../types/AuthRequest';
+import crypto from 'crypto';
 
 /**
  * @description Crea un nuevo negocio en la base de datos
@@ -139,6 +140,8 @@ export async function getBusinessesController(req: AuthRequest, res: Response, n
   try {
     const { page = 1, limit = 10 } = req.query;
     const userId = req.user?.id;
+
+    console.log('userId: ', userId)
     
     if (!userId) {
       res.status(HttpStatusCode.Unauthorized).send({ 
@@ -153,7 +156,7 @@ export async function getBusinessesController(req: AuthRequest, res: Response, n
     
     const skip = (pageNumber - 1) * limitNumber;
     
-    const businesses = await models.business.find({ owner: userId })
+    const businesses = await models.business.find({ $or: [{ owner: userId }, { employees: userId }] })
       .populate('owner', 'firstName lastName email')
       .populate('employees', 'firstName lastName email')
       .populate('integrations')
@@ -161,7 +164,7 @@ export async function getBusinessesController(req: AuthRequest, res: Response, n
       .limit(limitNumber)
       .sort({ createdAt: -1 });
     
-    const total = await models.business.countDocuments({ owner: userId });
+    const total = await models.business.countDocuments({ $or: [{ owner: userId }, { employees: userId }] });
     
     res.status(HttpStatusCode.Ok).send({
       success: true,
@@ -209,7 +212,7 @@ export async function getBusinessByIdController(req: AuthRequest, res: Response,
       return;
     }
 
-    const business = await models.business.findOne({ _id: id, owner: userId })
+    const business = await models.business.findOne({ _id: id, $or: [{ owner: userId }, { employees: userId }] })
       .populate('owner', 'firstName lastName email')
       .populate('employees', 'firstName lastName email')
       .populate('integrations');
@@ -542,6 +545,404 @@ export async function removeEmployeeController(req: AuthRequest, res: Response, 
 
   } catch (error) {
     console.error('Error removing employee:', error);
+    next(error);
+  }
+}
+
+export async function inviteTeamMemberController(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { id } = req.params;
+    const { email, role = 'collaborator' } = req.body as { email?: string; role?: 'owner' | 'admin' | 'collaborator' | 'viewer' };
+    const userId = req.user?.id;
+
+    if (!id || !email) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Business ID and invitee email are required.'
+      });
+      return;
+    }
+
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: 'User authentication required.'
+      });
+      return;
+    }
+
+    if (!Types.ObjectId.isValid(id)) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Invalid business ID.'
+      });
+      return;
+    }
+
+    const business = await models.business.findOne({ _id: id, owner: userId });
+    if (!business) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: 'Business not found or you do not have permission to invite.'
+      });
+      return;
+    }
+
+    let invitee = await models.user.findOne({ email: email.toLowerCase().trim() });
+    if (!invitee) {
+      const bcrypt = require('bcryptjs');
+      const salt = await bcrypt.genSalt(10);
+      const generatedPassword = crypto.randomBytes(12).toString('base64').slice(0, 16);
+      const hashedPassword = await bcrypt.hash(generatedPassword, salt);
+      const local = email.split('@')[0];
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      invitee = await models.user.create({
+        firstName: local,
+        lastName: 'Invited',
+        email: email.toLowerCase().trim(),
+        password: hashedPassword,
+        isVerified: false,
+        verificationToken,
+        verificationTokenExpires,
+        businesses: []
+      });
+      try {
+        const resendWelcome = new (await import('../services/resend.service')).default();
+        await resendWelcome.sendSetupPasswordEmail(invitee.email, invitee.firstName, verificationToken);
+      } catch (e) {
+        console.error('Error sending account setup email:', (e as Error).message);
+      }
+    }
+
+    const alreadyMember = (business.teamMembers || []).some((m: any) => `${m.user}` === `${invitee._id}` && m.status !== 'removed');
+    if (alreadyMember) {
+      res.status(HttpStatusCode.Conflict).send({
+        message: 'User is already invited or a member of this business.'
+      });
+      return;
+    }
+
+    const updated = await models.business.findByIdAndUpdate(
+      id,
+      {
+        $push: {
+          teamMembers: {
+            user: invitee._id,
+            role,
+            status: 'invited',
+            invitedBy: userId,
+            invitedAt: new Date()
+          }
+        }
+      },
+      { new: true }
+    )
+      .populate('owner', 'firstName lastName email')
+      .populate('employees', 'firstName lastName email')
+      .populate('integrations')
+      .populate('teamMembers.user', 'firstName lastName email');
+
+    try {
+      const inviter = await models.user.findById(userId).select('firstName lastName email');
+      const resend = new (await import('../services/resend.service')).default();
+      const acceptLink = `${process.env.FRONTEND_URL}/team/accept?businessId=${id}`;
+      await resend.sendTeamInviteEmail(
+        invitee.email,
+        `${invitee.firstName} ${invitee.lastName}`.trim(),
+        updated?.name || 'Business',
+        `${inviter?.firstName || ''} ${inviter?.lastName || ''}`.trim(),
+        acceptLink
+      );
+    } catch (e) {
+      console.error('Error sending invitation email:', (e as Error).message);
+    }
+
+    res.status(HttpStatusCode.Ok).send({
+      message: 'Team member invited successfully.',
+      data: updated
+    });
+    return;
+  } catch (error) {
+    console.error('Error inviting team member:', error);
+    next(error);
+  }
+}
+
+export async function acceptTeamInviteController(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id;
+
+    if (!id) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Business ID is required.'
+      });
+      return;
+    }
+
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: 'User authentication required.'
+      });
+      return;
+    }
+
+    if (!Types.ObjectId.isValid(id)) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Invalid business ID.'
+      });
+      return;
+    }
+
+    const business = await models.business.findById(id);
+    if (!business) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: 'Business not found.'
+      });
+      return;
+    }
+
+    const membershipIndex = (business.teamMembers || []).findIndex((m: any) => `${m.user}` === `${userId}` && m.status === 'invited');
+    if (membershipIndex === -1) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: 'No pending invitation found for this user.'
+      });
+      return;
+    }
+
+    business.teamMembers![membershipIndex].status = 'active';
+    business.teamMembers![membershipIndex].joinedAt = new Date();
+
+    const employeeSet = new Set((business.employees || []).map((e: any) => `${e}`));
+    employeeSet.add(`${userId}`);
+    business.employees = Array.from(employeeSet) as any;
+
+    const saved = await business.save();
+
+    const populated = await models.business
+      .findById(saved._id)
+      .populate('owner', 'firstName lastName email')
+      .populate('employees', 'firstName lastName email')
+      .populate('integrations')
+      .populate('teamMembers.user', 'firstName lastName email');
+
+    try {
+      const ownerUser = await models.user.findById(business.owner).select('firstName lastName email');
+      const memberUser = await models.user.findById(userId).select('firstName lastName');
+      const resend = new (await import('../services/resend.service')).default();
+      await resend.sendTeamAcceptedEmail(
+        ownerUser?.email || '',
+        `${ownerUser?.firstName || ''} ${ownerUser?.lastName || ''}`.trim(),
+        `${memberUser?.firstName || ''} ${memberUser?.lastName || ''}`.trim(),
+        populated?.name || 'Business',
+        `${business._id}`
+      );
+    } catch (e) {
+      console.error('Error sending invitation accepted email:', (e as Error).message);
+    }
+
+    res.status(HttpStatusCode.Ok).send({
+      message: 'Team invitation accepted successfully.',
+      data: populated
+    });
+    return;
+  } catch (error) {
+    console.error('Error accepting team invite:', error);
+    next(error);
+  }
+}
+
+export async function listTeamMembersController(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id;
+
+    if (!id) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Business ID is required.'
+      });
+      return;
+    }
+
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: 'User authentication required.'
+      });
+      return;
+    }
+
+    const business = await models.business
+      .findOne({ _id: id, $or: [{ owner: userId }, { employees: userId }] })
+      .populate('teamMembers.user', 'firstName lastName email')
+      .populate('owner', 'firstName lastName email')
+      .populate('employees', 'firstName lastName email');
+
+    if (!business) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: 'Business not found or access denied.'
+      });
+      return;
+    }
+
+    res.status(HttpStatusCode.Ok).send({
+      message: 'Team members retrieved successfully.',
+      data: business.teamMembers || []
+    });
+    return;
+  } catch (error) {
+    console.error('Error listing team members:', error);
+    next(error);
+  }
+}
+
+export async function updateTeamMemberRoleController(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { id, userId: memberUserId } = req.params as { id: string; userId: string };
+    const { role } = req.body as { role?: 'owner' | 'admin' | 'collaborator' | 'viewer' };
+    const requesterId = req.user?.id;
+
+    if (!id || !memberUserId || !role) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Business ID, userId and role are required.'
+      });
+      return;
+    }
+
+    if (!requesterId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: 'User authentication required.'
+      });
+      return;
+    }
+
+    if (!Types.ObjectId.isValid(id) || !Types.ObjectId.isValid(memberUserId)) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Invalid business ID or user ID.'
+      });
+      return;
+    }
+
+    const business = await models.business.findOne({ _id: id, owner: requesterId });
+    if (!business) {
+      res.status(HttpStatusCode.Forbidden).send({
+        message: 'Only the business owner can change member roles.'
+      });
+      return;
+    }
+
+    const idx = (business.teamMembers || []).findIndex((m: any) => `${m.user}` === `${memberUserId}` && m.status !== 'removed');
+    if (idx === -1) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: 'Team member not found.'
+      });
+      return;
+    }
+
+    business.teamMembers![idx].role = role;
+    const saved = await business.save();
+
+    const populated = await models.business
+      .findById(saved._id)
+      .populate('teamMembers.user', 'firstName lastName email')
+      .populate('owner', 'firstName lastName email')
+      .populate('employees', 'firstName lastName email');
+
+    try {
+      const member = await models.user.findById(memberUserId).select('firstName lastName email');
+      const resend = new (await import('../services/resend.service')).default();
+      await resend.sendTeamRoleUpdatedEmail(
+        member?.email || '',
+        `${member?.firstName || ''} ${member?.lastName || ''}`.trim(),
+        populated?.name || 'Business',
+        role
+      );
+    } catch (e) {
+      console.error('Error sending role updated email:', (e as Error).message);
+    }
+
+    res.status(HttpStatusCode.Ok).send({
+      message: 'Team member role updated successfully.',
+      data: populated
+    });
+    return;
+  } catch (error) {
+    console.error('Error updating team member role:', error);
+    next(error);
+  }
+}
+
+export async function revokeTeamMemberController(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { id, userId: memberUserId } = req.params as { id: string; userId: string };
+    const requesterId = req.user?.id;
+
+    if (!id || !memberUserId) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Business ID and userId are required.'
+      });
+      return;
+    }
+
+    if (!requesterId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: 'User authentication required.'
+      });
+      return;
+    }
+
+    if (!Types.ObjectId.isValid(id) || !Types.ObjectId.isValid(memberUserId)) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Invalid business ID or user ID.'
+      });
+      return;
+    }
+
+    const business = await models.business.findOne({ _id: id, owner: requesterId });
+    if (!business) {
+      res.status(HttpStatusCode.Forbidden).send({
+        message: 'Only the business owner can revoke invitations or memberships.'
+      });
+      return;
+    }
+
+    const idx = (business.teamMembers || []).findIndex((m: any) => `${m.user}` === `${memberUserId}` && m.status !== 'removed');
+    if (idx === -1) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: 'Team member not found or already removed.'
+      });
+      return;
+    }
+
+    business.teamMembers![idx].status = 'removed';
+    const employeeIdx = (business.employees || []).findIndex((e: any) => `${e}` === `${memberUserId}`);
+    if (employeeIdx !== -1) {
+      business.employees!.splice(employeeIdx, 1);
+    }
+
+    const saved = await business.save();
+
+    const populated = await models.business
+      .findById(saved._id)
+      .populate('teamMembers.user', 'firstName lastName email')
+      .populate('owner', 'firstName lastName email')
+      .populate('employees', 'firstName lastName email');
+
+    try {
+      const member = await models.user.findById(memberUserId).select('firstName lastName email');
+      const resend = new (await import('../services/resend.service')).default();
+      await resend.sendTeamRevokedEmail(
+        member?.email || '',
+        `${member?.firstName || ''} ${member?.lastName || ''}`.trim(),
+        populated?.name || 'Business'
+      );
+    } catch (e) {
+      console.error('Error sending revoked email:', (e as Error).message);
+    }
+
+    res.status(HttpStatusCode.Ok).send({
+      message: 'Team member revoked successfully.',
+      data: populated
+    });
+    return;
+  } catch (error) {
+    console.error('Error revoking team member:', error);
     next(error);
   }
 }
