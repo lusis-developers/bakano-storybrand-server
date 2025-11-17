@@ -41,18 +41,34 @@ export async function createBusinessController(req: AuthRequest, res: Response, 
       return;
     }
 
-    // 3. Verificar si ya existe un negocio con el mismo nombre para este usuario
-    const existingBusiness = await models.business.findOne({ 
-      name: name.trim(), 
-      owner: userId 
+  // 3. Verificar si ya existe un negocio con el mismo nombre para este usuario
+  const existingBusiness = await models.business.findOne({ 
+    name: name.trim(), 
+    owner: userId 
+  });
+  if (existingBusiness) {
+    res.status(HttpStatusCode.Conflict).send({ 
+      success: false,
+      message: 'You already have a business with this name' 
     });
-    if (existingBusiness) {
-      res.status(HttpStatusCode.Conflict).send({ 
-        success: false,
-        message: 'You already have a business with this name' 
-      });
-      return;
-    }
+    return;
+  }
+
+  const plan = (user.subscription?.plan as 'free' | 'starter' | 'pro' | 'enterprise') || 'free';
+  const planLimits: Record<'free' | 'starter' | 'pro' | 'enterprise', number> = {
+    free: 1,
+    starter: 5,
+    pro: 15,
+    enterprise: Number.MAX_SAFE_INTEGER
+  };
+  const ownedCount = await models.business.countDocuments({ owner: userId });
+  if (ownedCount >= planLimits[plan]) {
+    res.status(HttpStatusCode.Forbidden).send({ 
+      success: false,
+      message: 'Business creation limit reached for your plan.'
+    });
+    return;
+  }
 
     // 4. Validar email si se proporciona
     if (email) {
