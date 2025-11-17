@@ -4,6 +4,7 @@ import integration from './integration.model';
 import content from './content.model';
 import onboarding from './onboarding.model';
 import chat from './chat.model';
+import subscription from './subscription.model';
 import teamAudit from './teamAudit.model';
 
 const models = {
@@ -13,7 +14,8 @@ const models = {
   content,
   onboarding,
   chat,
-  teamAudit
+  teamAudit,
+  subscription
 };
 
 export default models;
