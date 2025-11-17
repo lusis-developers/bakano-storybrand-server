@@ -640,6 +640,18 @@ export async function inviteTeamMemberController(req: AuthRequest, res: Response
       .populate('teamMembers.user', 'firstName lastName email');
 
     try {
+      await models.teamAudit.create({
+        business: new Types.ObjectId(id),
+        actor: new Types.ObjectId(userId),
+        targetUser: new Types.ObjectId(`${invitee._id}`),
+        action: 'invited',
+        role
+      });
+    } catch (e) {
+      console.error('Error creating audit record (invited):', (e as Error).message);
+    }
+
+    try {
       const inviter = await models.user.findById(userId).select('firstName lastName email');
       const resend = new (await import('../services/resend.service')).default();
       const acceptLink = `${process.env.FRONTEND_URL}/team/accept?businessId=${id}`;
@@ -722,6 +734,19 @@ export async function acceptTeamInviteController(req: AuthRequest, res: Response
       .populate('employees', 'firstName lastName email')
       .populate('integrations')
       .populate('teamMembers.user', 'firstName lastName email');
+
+    try {
+      const roleAccepted = business.teamMembers![membershipIndex].role;
+      await models.teamAudit.create({
+        business: new Types.ObjectId(id),
+        actor: new Types.ObjectId(userId),
+        targetUser: new Types.ObjectId(userId),
+        action: 'accepted',
+        role: roleAccepted
+      });
+    } catch (e) {
+      console.error('Error creating audit record (accepted):', (e as Error).message);
+    }
 
     try {
       const ownerUser = await models.user.findById(business.owner).select('firstName lastName email');
@@ -845,6 +870,29 @@ export async function updateTeamMemberRoleController(req: AuthRequest, res: Resp
       .populate('employees', 'firstName lastName email');
 
     try {
+      await models.teamAudit.create({
+        business: new Types.ObjectId(id),
+        actor: new Types.ObjectId(requesterId),
+        targetUser: new Types.ObjectId(memberUserId),
+        action: 'role_updated',
+        role
+      });
+    } catch (e) {
+      console.error('Error creating audit record (role_updated):', (e as Error).message);
+    }
+
+    try {
+      await models.teamAudit.create({
+        business: new Types.ObjectId(id),
+        actor: new Types.ObjectId(requesterId),
+        targetUser: new Types.ObjectId(memberUserId),
+        action: 'revoked'
+      });
+    } catch (e) {
+      console.error('Error creating audit record (revoked):', (e as Error).message);
+    }
+
+    try {
       const member = await models.user.findById(memberUserId).select('firstName lastName email');
       const resend = new (await import('../services/resend.service')).default();
       await resend.sendTeamRoleUpdatedEmail(
@@ -902,27 +950,39 @@ export async function revokeTeamMemberController(req: AuthRequest, res: Response
       return;
     }
 
-    const idx = (business.teamMembers || []).findIndex((m: any) => `${m.user}` === `${memberUserId}` && m.status !== 'removed');
+    const idx = (business.teamMembers || []).findIndex((m: any) => `${m.user}` === `${memberUserId}`);
     if (idx === -1) {
       res.status(HttpStatusCode.NotFound).send({
         message: 'Team member not found or already removed.'
       });
       return;
     }
+    await models.business.updateOne(
+      { _id: id },
+      { $pull: { teamMembers: { user: new Types.ObjectId(memberUserId) }, employees: new Types.ObjectId(memberUserId) } }
+    );
 
-    business.teamMembers![idx].status = 'removed';
-    const employeeIdx = (business.employees || []).findIndex((e: any) => `${e}` === `${memberUserId}`);
-    if (employeeIdx !== -1) {
-      business.employees!.splice(employeeIdx, 1);
-    }
-
-    const saved = await business.save();
+    await models.user.updateOne(
+      { _id: memberUserId },
+      { $pull: { businesses: new Types.ObjectId(id) } }
+    );
 
     const populated = await models.business
-      .findById(saved._id)
+      .findById(id)
       .populate('teamMembers.user', 'firstName lastName email')
       .populate('owner', 'firstName lastName email')
       .populate('employees', 'firstName lastName email');
+
+    try {
+      await models.teamAudit.create({
+        business: new Types.ObjectId(id),
+        actor: new Types.ObjectId(requesterId),
+        targetUser: new Types.ObjectId(memberUserId),
+        action: 'revoked'
+      });
+    } catch (e) {
+      console.error('Error creating audit record (revoked):', (e as Error).message);
+    }
 
     try {
       const member = await models.user.findById(memberUserId).select('firstName lastName email');
@@ -943,6 +1003,74 @@ export async function revokeTeamMemberController(req: AuthRequest, res: Response
     return;
   } catch (error) {
     console.error('Error revoking team member:', error);
+    next(error);
+  }
+}
+
+export async function listTeamAuditController(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+    const userId = req.user?.id;
+
+    if (!id) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Business ID is required.'
+      });
+      return;
+    }
+
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: 'User authentication required.'
+      });
+      return;
+    }
+
+    if (!Types.ObjectId.isValid(id)) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Invalid business ID.'
+      });
+      return;
+    }
+
+    const business = await models.business.findOne({ _id: id, $or: [{ owner: userId }, { employees: userId }] });
+    if (!business) {
+      res.status(HttpStatusCode.Forbidden).send({
+        message: 'Access denied.'
+      });
+      return;
+    }
+
+    const pageNumber = parseInt(page as string);
+    const limitNumber = parseInt(limit as string);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    const events = await models.teamAudit.find({ business: id })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNumber)
+      .populate('actor', 'firstName lastName email')
+      .populate('targetUser', 'firstName lastName email');
+
+    const total = await models.teamAudit.countDocuments({ business: id });
+
+    res.status(HttpStatusCode.Ok).send({
+      message: 'Team audit retrieved successfully.',
+      data: {
+        events,
+        pagination: {
+          currentPage: pageNumber,
+          totalPages: Math.ceil(total / limitNumber),
+          totalEvents: total,
+          hasNextPage: pageNumber < Math.ceil(total / limitNumber),
+          hasPrevPage: pageNumber > 1
+        }
+      }
+    });
+    return;
+  } catch (error) {
+    console.error('Error listing team audit:', error);
     next(error);
   }
 }
