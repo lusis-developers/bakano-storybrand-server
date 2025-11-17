@@ -11,7 +11,8 @@ import {
   acceptTeamInviteController,
   listTeamMembersController,
   updateTeamMemberRoleController,
-  revokeTeamMemberController
+  revokeTeamMemberController,
+  listTeamAuditController
 } from '../controllers/business.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 
@@ -36,5 +37,6 @@ router.post('/:id/team/accept', acceptTeamInviteController);
 router.get('/:id/team', listTeamMembersController);
 router.patch('/:id/team/:userId/role', updateTeamMemberRoleController);
 router.delete('/:id/team/:userId/revoke', revokeTeamMemberController);
+router.get('/:id/team/audit', listTeamAuditController);
 
 export default router;
