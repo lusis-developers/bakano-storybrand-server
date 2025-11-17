@@ -6,7 +6,12 @@ import {
   updateBusinessController,
   deleteBusinessController,
   addEmployeeController,
-  removeEmployeeController
+  removeEmployeeController,
+  inviteTeamMemberController,
+  acceptTeamInviteController,
+  listTeamMembersController,
+  updateTeamMemberRoleController,
+  revokeTeamMemberController
 } from '../controllers/business.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 
@@ -25,5 +30,11 @@ router.delete('/:id', deleteBusinessController);
 // Gestión de empleados
 router.post('/:id/employees', addEmployeeController);
 router.delete('/:id/employees/:employeeId', removeEmployeeController);
+
+router.post('/:id/team/invite', inviteTeamMemberController);
+router.post('/:id/team/accept', acceptTeamInviteController);
+router.get('/:id/team', listTeamMembersController);
+router.patch('/:id/team/:userId/role', updateTeamMemberRoleController);
+router.delete('/:id/team/:userId/revoke', revokeTeamMemberController);
 
 export default router;
