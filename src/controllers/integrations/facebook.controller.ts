@@ -5,6 +5,7 @@ import { HttpStatusCode } from "axios";
 import CustomError from "../../errors/customError.error";
 import { Types } from "mongoose";
 import { facebookPostService } from "../../services/facebookPost.service";
+import { facebookMetricsService } from "../../services/facebookMetrics.service";
 
 /**
  * Handles the first step of Facebook connection:
@@ -437,104 +438,22 @@ export async function getFacebookScheduledPostsController(req: Request, res: Res
 export async function getFacebookPageMetricsController(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { businessId } = req.params;
-    const { period, since, until, date_preset } = req.query as Record<string, string | undefined>;
     if (!businessId || !Types.ObjectId.isValid(businessId)) {
       res.status(HttpStatusCode.BadRequest).send({ message: 'Invalid or missing businessId parameter' });
       return;
     }
-
-    const integration = await models.integration.findOne({
-      business: businessId,
-      type: 'facebook',
-      isConnected: true
-    }).select('+config.accessToken');
-
-    if (!integration || !integration.config.accessToken || !integration.metadata?.pageId) {
-      res.status(HttpStatusCode.NotFound).send({ message: 'Active Facebook integration not found or is incomplete for this business' });
+    try {
+      const result = await facebookMetricsService.getBusinessPageMetrics(businessId, req.query as any)
+      res.status(HttpStatusCode.Ok).send({
+        message: 'Facebook page metrics retrieved successfully',
+        data: result.data,
+        filters: result.filters
+      });
+      return;
+    } catch (e: any) {
+      res.status(HttpStatusCode.BadRequest).send({ message: e?.message || 'Error retrieving Facebook page metrics' });
       return;
     }
-
-    const pageAccessToken = integration.config.accessToken as string;
-    const pageId = integration.metadata.pageId as string;
-
-    const metrics = [
-      'page_impressions',
-      'page_impressions_unique',
-      'page_impressions_paid',
-      'page_post_engagements',
-      'page_total_actions'
-    ];
-    const [followers, insights] = await Promise.all([
-      facebookService.getPageFollowerStats(pageAccessToken, pageId),
-      facebookService.getPageInsights(pageAccessToken, pageId, metrics, {
-        period: (period as any) || 'days_28',
-        since,
-        until,
-        date_preset: (date_preset as any) || 'last_28d'
-      })
-    ]);
-
-    const tzRaw = (req.query as any).tz as string | undefined;
-    const offsetRaw = (req.query as any).offsetMinutes as string | undefined;
-    const tz = tzRaw && tzRaw.trim() ? tzRaw.trim() : undefined;
-    const offsetMinutes = offsetRaw !== undefined ? Number(offsetRaw) : undefined;
-    const formatLocal = (d: Date): { date: string; time: string } => {
-      if (tz) {
-        const parts = new Intl.DateTimeFormat('en-US', {
-          timeZone: tz,
-          hour12: false,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit'
-        }).formatToParts(d);
-        const get = (type: string) => parts.find(p => p.type === type)?.value || '';
-        const year = get('year');
-        const month = get('month');
-        const day = get('day');
-        const hour = get('hour');
-        const minute = get('minute');
-        return { date: `${year}-${month}-${day}`, time: `${hour}:${minute}` };
-      }
-      if (Number.isFinite(offsetMinutes)) {
-        const adj = new Date(d.getTime() + (offsetMinutes as number) * 60000);
-        const iso = adj.toISOString();
-        return { date: iso.slice(0, 10), time: iso.slice(11, 16) };
-      }
-      const iso = d.toISOString();
-      return { date: iso.slice(0, 10), time: iso.slice(11, 16) };
-    };
-    const formattedMetrics: Record<string, { total: number; averagePerDay: number; series: Array<{ date: string; time: string; value: number }> }> = {};
-    Object.keys(insights || {}).forEach((key) => {
-      const metric = (insights as any)[key] || {};
-      const values = Array.isArray(metric.values) ? metric.values : [];
-      const series = values.map((v: any) => {
-        const dt = v?.end_time ? new Date(v.end_time) : undefined;
-        const loc = dt ? formatLocal(dt) : { date: '', time: '' };
-        const value = typeof v?.value === 'number' ? v.value : 0;
-        return { date: loc.date, time: loc.time, value };
-      });
-      const total = typeof metric.total === 'number' ? metric.total : 0;
-      const averagePerDay = series.length > 0 ? Math.round(total / series.length) : 0;
-      formattedMetrics[key] = { total, averagePerDay, series };
-    });
-
-    res.status(HttpStatusCode.Ok).send({
-      message: 'Facebook page metrics retrieved successfully',
-      data: {
-        page: { id: pageId, name: integration.metadata?.pageName },
-        followers,
-        insights: {
-          period: (period as any) || 'days_28',
-          date_preset: (date_preset as any) || 'last_28d',
-          range: since || until ? { since, until } : undefined,
-          timezone: tz || (Number.isFinite(offsetMinutes) ? `UTC${(offsetMinutes as number) >= 0 ? '+' : ''}${offsetMinutes}` : 'UTC'),
-          metrics: formattedMetrics
-        }
-      }
-    });
-    return;
   } catch (error: any) {
     console.error('[GetFacebookPageMetricsController] ❌ Error:', error?.message);
     next(error);
