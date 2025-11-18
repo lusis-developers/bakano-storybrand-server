@@ -153,6 +153,53 @@ export async function createBusinessController(req: AuthRequest, res: Response, 
   }
 }
 
+export async function canCreateBusinessController(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: 'User authentication required.'
+      });
+      return;
+    }
+
+    const user = await models.user.findById(userId);
+    if (!user) {
+      res.status(HttpStatusCode.NotFound).send({
+        message: 'User not found.'
+      });
+      return;
+    }
+
+    const plan = (user.subscription?.plan as 'free' | 'starter' | 'pro' | 'enterprise') || 'free';
+    const planLimits: Record<'free' | 'starter' | 'pro' | 'enterprise', number> = {
+      free: 1,
+      starter: 5,
+      pro: 15,
+      enterprise: Number.MAX_SAFE_INTEGER
+    };
+    const current = await models.business.countDocuments({ owner: userId });
+    const limit = planLimits[plan];
+    const remaining = Math.max(0, limit - current);
+    const canCreate = current < limit;
+
+    res.status(HttpStatusCode.Ok).send({
+      message: canCreate ? 'You can create a new business.' : 'Business creation limit reached for your plan.',
+      data: {
+        plan,
+        limit,
+        current,
+        remaining,
+        canCreate
+      }
+    });
+    return;
+  } catch (error) {
+    console.error('Error checking business creation quota:', error);
+    next(error);
+  }
+}
+
 /**
  * @description Obtiene todos los negocios del usuario autenticado
  * @route GET /api/business
