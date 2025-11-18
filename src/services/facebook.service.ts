@@ -568,6 +568,74 @@ export class FacebookService {
     }
   }
 
+  async getPageInsights(
+    pageAccessToken: string,
+    pageId: string,
+    metrics: string[],
+    opts?: {
+      period?: 'day' | 'week' | 'days_28' | 'month' | 'lifetime' | 'total_over_range';
+      since?: string; // ISO or Unix timestamp accepted by Graph API
+      until?: string; // ISO or Unix timestamp accepted by Graph API
+      date_preset?:
+        | 'today'
+        | 'yesterday'
+        | 'this_month'
+        | 'last_month'
+        | 'this_quarter'
+        | 'maximum'
+        | 'data_maximum'
+        | 'last_3d'
+        | 'last_7d'
+        | 'last_14d'
+        | 'last_28d'
+        | 'last_30d'
+        | 'last_90d'
+        | 'last_week_mon_sun'
+        | 'last_week_sun_sat'
+        | 'last_quarter'
+        | 'last_year'
+        | 'this_week_mon_today'
+        | 'this_week_sun_today'
+        | 'this_year';
+    }
+  ): Promise<Record<string, { total?: number; values?: Array<{ end_time?: string; value?: number }> }>> {
+    const url = this.graphUrl(`/${pageId}/insights`);
+    const params: Record<string, any> = {
+      metric: metrics.join(','),
+      access_token: pageAccessToken,
+    };
+    if (opts?.period) params.period = opts.period;
+    if (opts?.date_preset && !opts.since && !opts.until) params.date_preset = opts.date_preset;
+    if (opts?.since) params.since = opts.since;
+    if (opts?.until) params.until = opts.until;
+    try {
+      const response = await axios.get<{ data: Array<{ name: string; period: string; values: Array<{ end_time?: string; value?: number }> }> }>(url, { params });
+      const result: Record<string, { total?: number; values?: Array<{ end_time?: string; value?: number }> }> = {};
+      for (const item of response.data.data || []) {
+        const values = item.values || [];
+        const total = values.reduce((sum, v) => sum + (typeof v.value === 'number' ? v.value : 0), 0);
+        result[item.name] = { total, values };
+      }
+      return result;
+    } catch (error: any) {
+      const fbError = error?.response?.data?.error;
+			console.error('eerorrrr: ', error.response.data)
+      if (fbError) {
+        const err = new Error(fbError?.message || 'Facebook Page Insights API error');
+        (err as any).meta = {
+          type: fbError?.type,
+          code: fbError?.code,
+          error_subcode: fbError?.error_subcode,
+          error_user_title: fbError?.error_user_title,
+          error_user_msg: fbError?.error_user_msg,
+          fbtrace_id: fbError?.fbtrace_id,
+        };
+        throw err;
+      }
+      throw error;
+    }
+  }
+
 	/**
    * Obtiene las cuentas publicitarias (Ad Accounts) asociadas a un Token de Usuario.
    * REQUIERE el permiso 'ads_management' o 'ads_read'.
