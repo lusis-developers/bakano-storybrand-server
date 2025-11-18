@@ -65,7 +65,12 @@ export async function createBusinessController(req: AuthRequest, res: Response, 
   if (ownedCount >= planLimits[plan]) {
     res.status(HttpStatusCode.Forbidden).send({ 
       success: false,
-      message: 'Business creation limit reached for your plan.'
+      message: 'Business creation limit reached for your plan.',
+      data: {
+        plan,
+        limit: planLimits[plan],
+        current: ownedCount
+      }
     });
     return;
   }
