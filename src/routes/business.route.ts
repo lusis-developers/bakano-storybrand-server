@@ -12,7 +12,8 @@ import {
   listTeamMembersController,
   updateTeamMemberRoleController,
   revokeTeamMemberController,
-  listTeamAuditController
+  listTeamAuditController,
+  canCreateBusinessController
 } from '../controllers/business.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 
@@ -38,5 +39,6 @@ router.get('/:id/team', listTeamMembersController);
 router.patch('/:id/team/:userId/role', updateTeamMemberRoleController);
 router.delete('/:id/team/:userId/revoke', revokeTeamMemberController);
 router.get('/:id/team/audit', listTeamAuditController);
+router.get('/quota/can-create', canCreateBusinessController);
 
 export default router;
