@@ -1,5 +1,6 @@
 import express from "express"
 import { createFacebookPhotoPostController, createFacebookVideoPostController, createPostController, facebookConnectController, facebookSavePageController, getFacebookPostsController, getFacebookScheduledPostsController } from "../../controllers/integrations/facebook.controller"
+import { getFacebookPageMetricsController } from "../../controllers/integrations/facebook.controller"
 
 import multer from "multer";
 
@@ -15,6 +16,7 @@ router.post('/connect-page', facebookSavePageController)
 router.get('/posts/:businessId', getFacebookPostsController)
 
 router.get('/posts/scheduled/:businessId', getFacebookScheduledPostsController)
+router.get('/metrics/:businessId', getFacebookPageMetricsController)
 
 router.post('/post/publish/text/:businessId', createPostController)
 
