@@ -6,6 +6,8 @@ import onboarding from './onboarding.model';
 import chat from './chat.model';
 import subscription from './subscription.model';
 import teamAudit from './teamAudit.model';
+import instagramMetrics from './instagramMetrics.model';
+import jobLock from './jobLock.model';
 
 const models = {
   user,
@@ -15,7 +17,9 @@ const models = {
   onboarding,
   chat,
   teamAudit,
-  subscription
+  subscription,
+  instagramMetrics,
+  jobLock
 };
 
 export default models;
