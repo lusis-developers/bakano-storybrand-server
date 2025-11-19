@@ -1075,6 +1075,61 @@ export async function revokeTeamMemberController(req: AuthRequest, res: Response
   }
 }
 
+export async function listPendingInvitationsForUserController(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    const { page = '1', limit = '20', sort = 'desc' } = req.query as Record<string, string>;
+
+    if (!userId) {
+      res.status(HttpStatusCode.Unauthorized).send({
+        message: 'User authentication required.'
+      });
+      return;
+    }
+
+    const pageNumber = Math.max(Number(page) || 1, 1);
+    const limitNumber = Math.min(Math.max(Number(limit) || 20, 1), 100);
+    const sortOrder = (String(sort).toLowerCase() === 'asc') ? 1 : -1;
+
+    const match = { 'teamMembers': { $elemMatch: { user: new Types.ObjectId(userId), status: 'invited' } } } as any;
+    const total = await models.business.countDocuments(match);
+
+    const businesses = await models.business
+      .find(match)
+      .sort({ 'teamMembers.invitedAt': sortOrder })
+      .skip((pageNumber - 1) * limitNumber)
+      .limit(limitNumber)
+      .select('name teamMembers')
+      .populate({ path: 'teamMembers.user', select: 'firstName lastName email' })
+      .populate({ path: 'teamMembers.invitedBy', select: 'firstName lastName email' });
+
+    const invitations = [] as Array<{ businessId: string; businessName: string; role: string; status: string; invitedAt?: Date; invitedBy?: { id: string; name: string; email: string } }>;
+    for (const b of businesses) {
+      const tm = (b.teamMembers || []).find((m: any) => `${m.user?._id || m.user}` === `${userId}` && m.status === 'invited');
+      if (!tm) continue;
+      const inviter = tm.invitedBy as any;
+      const inviterInfo = inviter ? { id: `${inviter._id}`, name: `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim(), email: inviter.email } : undefined;
+      invitations.push({ businessId: `${b._id}`, businessName: (b as any).name, role: tm.role, status: tm.status, invitedAt: tm.invitedAt, invitedBy: inviterInfo });
+    }
+
+    res.status(HttpStatusCode.Ok).send({
+      message: 'Pending team invitations retrieved successfully.',
+      data: {
+        invitations,
+        pagination: {
+          page: pageNumber,
+          limit: limitNumber,
+          total,
+          totalPages: Math.ceil(total / limitNumber)
+        }
+      }
+    });
+    return;
+  } catch (error) {
+    console.error('Error listing pending invitations:', error);
+    next(error);
+  }
+}
 export async function listTeamAuditController(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const { id } = req.params;
