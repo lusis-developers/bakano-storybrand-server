@@ -83,6 +83,7 @@ export async function getInstagramViralPostsController(req: Request, res: Respon
     const hashtagsRaw = q.hashtags;
     const typeRaw = q.resultsType;
     const limitRaw = q.resultsLimit;
+    const keywordSearchRaw = q.keywordSearch;
 
     let hashtags: string[] = [];
     if (Array.isArray(hashtagsRaw)) {
@@ -100,23 +101,33 @@ export async function getInstagramViralPostsController(req: Request, res: Respon
       return;
     }
 
-    const resultsType = String(typeRaw || "posts").toLowerCase() === "reels" ? "reels" : "posts";
+    const rt = String(typeRaw || "stories").toLowerCase();
+    const resultsType = rt === "stories" ? "stories" : (rt === "reels" ? "stories" : "posts");
     const resultsLimitNum = Math.min(Math.max(Number(limitRaw || 20), 1), 200);
+    const keywordSearch = String(keywordSearchRaw || "false").toLowerCase() === "true" || String(keywordSearchRaw || "0") === "1";
 
     try {
-      const { items, count } = await scrapperService.getInstagramViralPostsByHashtags({ hashtags, resultsType, resultsLimit: resultsLimitNum });
+      const { items, count } = await scrapperService.getInstagramViralPostsByHashtags({ hashtags, resultsType, resultsLimit: resultsLimitNum, keywordSearch });
       res.status(HttpStatusCode.Ok).send({
         message: "Instagram viral posts retrieved successfully.",
-        filters: { hashtags, resultsType, resultsLimit: resultsLimitNum },
+        filters: { hashtags, resultsType, resultsLimit: resultsLimitNum, keywordSearch },
         items,
         count
       });
       return;
     } catch (e: any) {
+      console.error('[getInstagramViralPostsController] error', {
+        hashtags,
+        resultsType,
+        resultsLimit: resultsLimitNum,
+        keywordSearch,
+        error: e?.message || e
+      });
       res.status(HttpStatusCode.BadRequest).send({ message: e?.message || "Error retrieving Instagram viral posts" });
       return;
     }
   } catch (error) {
+    console.error('[getInstagramViralPostsController] outer error', error);
     next(error);
   }
 }
