@@ -11,14 +11,37 @@ function nextRunDelay(): number {
 
 async function runJob(): Promise<void> {
   const now = new Date()
-  const lock = await (models.jobLock as any).findOneAndUpdate(
-    { key: 'instagram_followers_daily', $or: [{ expiresAt: { $lte: now } }, { lockedAt: { $exists: false } }] },
-    { $set: { lockedAt: now, expiresAt: new Date(now.getTime() + 30 * 60 * 1000) } },
-    { new: true, upsert: true }
-  )
-  if (!lock || (lock.expiresAt && lock.expiresAt.getTime() > now.getTime() && lock.lockedAt && lock.lockedAt.getTime() < now.getTime())) {
-    return
+  const ttlMs = 30 * 60 * 1000
+  const key = 'instagram_followers_daily'
+  const expireAt = new Date(now.getTime() + ttlMs)
+  let acquired = false
+  try {
+    const updated = await (models.jobLock as any).findOneAndUpdate(
+      { key, $or: [{ expiresAt: { $lte: now } }, { expiresAt: { $exists: false } }] },
+      { $set: { lockedAt: now, expiresAt: expireAt } },
+      { new: true }
+    )
+    if (updated) {
+      acquired = true
+    } else {
+      try {
+        await (models.jobLock as any).create({ key, lockedAt: now, expiresAt: expireAt })
+        acquired = true
+      } catch (e: any) {
+        if (e && (e.code === 11000 || String(e.message || '').includes('E11000'))) {
+          acquired = false
+        } else {
+          throw e
+        }
+      }
+    }
+  } catch (e: any) {
+    if (e && (e.code === 11000 || String(e.message || '').includes('E11000'))) {
+      return
+    }
+    throw e
   }
+  if (!acquired) return
   try {
     const integrations = await (models.integration as any).find({ type: 'instagram', isConnected: true }).select('+config.accessToken metadata.instagramAccountId business')
     for (const integ of integrations) {
@@ -30,7 +53,7 @@ async function runJob(): Promise<void> {
       } catch {}
     }
   } finally {
-    await (models.jobLock as any).updateOne({ key: 'instagram_followers_daily' }, { $set: { expiresAt: new Date() } })
+    await (models.jobLock as any).updateOne({ key }, { $set: { expiresAt: new Date() } })
   }
 }
 
