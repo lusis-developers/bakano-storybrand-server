@@ -323,6 +323,59 @@ export class InstagramService {
 			);
 		}
 	}
+
+	async getUserInsights(
+		igUserId: string,
+		accessToken: string,
+		metrics: string[],
+		opts?: { period?: string; since?: string; until?: string; date_preset?: string; metric_type?: 'time_series' | 'total_value'; breakdown?: string }
+	): Promise<Record<string, { total?: number; values?: Array<{ end_time?: string; value?: number }>; breakdown?: Array<{ label: string; value: number }> }>> {
+		const url = `${this.apiBase}/${this.apiVersion}/${igUserId}/insights`;
+		const params: Record<string, any> = {
+			metric: metrics.join(','),
+			period: opts?.period ? opts.period : 'day',
+			access_token: accessToken,
+		};
+		if (opts?.metric_type) params.metric_type = opts.metric_type;
+		if (opts?.breakdown) params.breakdown = opts.breakdown;
+		if (opts?.since) params.since = opts.since;
+		if (opts?.until) params.until = opts.until;
+		if (opts?.date_preset && !opts.since && !opts.until) params.date_preset = opts.date_preset;
+		try {
+			const response = await axios.get<{ data: Array<any> }>(url, { params });
+			const result: Record<string, { total?: number; values?: Array<{ end_time?: string; value?: number }>; breakdown?: Array<{ label: string; value: number }> }> = {};
+			for (const item of response.data.data || []) {
+				if (item.total_value) {
+					const tv = item.total_value;
+					const total = typeof tv.value === 'number' ? tv.value : 0;
+					const breakdownValues: Array<{ end_time?: string; value?: number }> = [];
+					const breakdownPairs: Array<{ label: string; value: number }> = [];
+					if (Array.isArray(tv.breakdowns)) {
+						for (const b of tv.breakdowns) {
+							for (const r of b.results || []) {
+								breakdownValues.push({ end_time: r.end_time, value: r.value });
+								const label = Array.isArray(r.dimension_values) ? r.dimension_values.join('|') : '';
+								breakdownPairs.push({ label, value: typeof r.value === 'number' ? r.value : 0 });
+							}
+						}
+					}
+					result[item.name] = { total, values: breakdownValues, breakdown: breakdownPairs };
+				} else {
+					const values = item.values || [];
+					const total = values.reduce((sum: number, v: any) => sum + (typeof v.value === 'number' ? v.value : 0), 0);
+					result[item.name] = { total, values };
+				}
+			}
+			return result;
+		} catch (error: any) {
+			const fbError = error?.response?.data?.error;
+			console.error(`[InstagramService] ❌ Error getting user insights for ${igUserId}:`, fbError || error.message);
+			throw new CustomError(
+				fbError?.message || 'Error getting Instagram user insights',
+				error?.response?.status || HttpStatusCode.InternalServerError
+			);
+		}
+	}
 }
 
 const instagramService = new InstagramService();
