@@ -50,7 +50,11 @@ export async function createContentProject(req: AuthRequest, res: Response, next
     // Verify business exists and belongs to user
     const business = await models.business.findOne({
       _id: businessId,
-      owner: req.user.id
+      $or: [
+        { owner: req.user.id },
+        { employees: new Types.ObjectId(req.user.id) },
+        { teamMembers: { $elemMatch: { user: new Types.ObjectId(req.user.id), status: 'active' } } }
+      ]
     });
 
     if (!business) {
@@ -236,10 +240,14 @@ export async function getContentByBusiness(req: AuthRequest, res: Response, next
       return;
     }
 
-    // Verify business belongs to user
+    // Verify access: owner, employee or active team member
     const business = await models.business.findOne({
       _id: businessId,
-      owner: req.user.id
+      $or: [
+        { owner: req.user.id },
+        { employees: new Types.ObjectId(req.user.id) },
+        { teamMembers: { $elemMatch: { user: new Types.ObjectId(req.user.id), status: 'active' } } }
+      ]
     });
 
     if (!business) {
