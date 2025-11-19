@@ -294,3 +294,53 @@ export async function verifyUserController(req: Request, res: Response, next: Ne
     next(error);
   }
 }
+
+/**
+ * @description Sets a user's password using a verification token and verifies the account
+ * @route POST /api/auth/set-password
+ */
+export async function setPasswordWithTokenController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { token, password } = req.body as { token?: string; password?: string };
+    if (!token || !password) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Verification token and new password are required.'
+      });
+      return;
+    }
+
+    const user = await models.user
+      .findOne({ verificationToken: token, verificationTokenExpires: { $gt: new Date() } })
+      .select('+verificationToken +verificationTokenExpires');
+
+    if (!user) {
+      res.status(HttpStatusCode.BadRequest).send({
+        message: 'Invalid or expired verification token.'
+      });
+      return;
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    user.password = hashedPassword;
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    user.verificationTokenExpires = undefined;
+    await user.save();
+
+    res.status(HttpStatusCode.Ok).send({
+      message: 'Password set successfully. Your account is verified.',
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        isVerified: user.isVerified
+      }
+    });
+    return;
+  } catch (error) {
+    console.error('Error setting password:', error);
+    next(error);
+  }
+}

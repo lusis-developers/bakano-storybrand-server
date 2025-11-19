@@ -49,6 +49,8 @@ export interface IIntegrationModel extends Model<IIntegration> {
     type: 'instagram' | 'facebook'
   ): Promise<IIntegration | null>;
   disconnectIntegration(businessId: string | Types.ObjectId, type: 'instagram' | 'facebook'): Promise<IIntegration | null>;
+  saveAdAccountId(businessId: string | Types.ObjectId, adAccountId: string): Promise<IIntegration | null>;
+  saveUserAccessToken(businessId: string | Types.ObjectId, userAccessToken: string, expiresIn?: number): Promise<IIntegration | null>;
 }
 
 // --- SCHEMA DEFINITION ---
@@ -154,7 +156,9 @@ integrationSchema.statics.upsertUserToken = async function(
         'config.tokenExpiresAt': tokenExpiresAt,
         isActive: true,
         isConnected: false, // Not fully connected yet
-        'metadata.status': 'pending_page_selection'
+        'metadata.status': 'pending_page_selection',
+        'metadata.userAccessToken': userAccessToken,
+        'metadata.userTokenExpiresAt': tokenExpiresAt
       }
     },
     { new: true, upsert: true }
@@ -173,6 +177,10 @@ integrationSchema.statics.finalizeWithPageToken = async function(
   pageAccessToken: string,
   type: 'instagram' | 'facebook'
 ): Promise<IIntegration | null> {
+  const current = await this.findOne({ business: businessId, type });
+
+  const prevUserToken = current?.config?.accessToken || null;
+
   const integration = await this.findOneAndUpdate(
     { 
       business: businessId,
@@ -188,6 +196,7 @@ integrationSchema.statics.finalizeWithPageToken = async function(
         'metadata.pageId': pageId,
         'metadata.pageName': pageName,
         'metadata.status': 'connected',
+        ...(prevUserToken ? { 'metadata.userAccessToken': prevUserToken } : {}),
         lastSyncAt: new Date()
       }
     },
@@ -215,6 +224,41 @@ integrationSchema.statics.disconnectIntegration = async function(
         'metadata.status': 'disconnected'
       }
     },
+    { new: true }
+  );
+  return integration;
+};
+
+integrationSchema.statics.saveAdAccountId = async function(
+  businessId: string | Types.ObjectId,
+  adAccountId: string
+): Promise<IIntegration | null> {
+  const integration = await this.findOneAndUpdate(
+    { business: businessId, type: 'facebook' },
+    { $set: { 'metadata.adAccountId': adAccountId } },
+    { new: true }
+  );
+  return integration;
+};
+
+integrationSchema.statics.saveUserAccessToken = async function(
+  businessId: string | Types.ObjectId,
+  userAccessToken: string,
+  expiresIn?: number
+): Promise<IIntegration | null> {
+  const update: any = {
+    $set: {
+      'metadata.userAccessToken': userAccessToken,
+    }
+  };
+  if (expiresIn && Number.isFinite(expiresIn)) {
+    const tokenExpiresAt = new Date();
+    tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + expiresIn);
+    update.$set['metadata.userTokenExpiresAt'] = tokenExpiresAt;
+  }
+  const integration = await this.findOneAndUpdate(
+    { business: businessId, type: 'facebook' },
+    update,
     { new: true }
   );
   return integration;

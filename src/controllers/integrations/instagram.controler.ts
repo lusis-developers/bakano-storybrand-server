@@ -4,10 +4,13 @@ import CustomError from "../../errors/customError.error";
 import { listLinkedInstagramAccounts, LinkedInstagramAccount } from "../../services/instagram-pages.service";
 import { Integration } from "../../models/integration.model";
 import { Business } from "../../models/business.model";
+import models from "../../models";
 import { facebookService } from "../../services/facebook.service";
 import { instagramService } from "../../services/instagram.service";
 import { Types } from "mongoose";
 import { instagramPostService } from "../../services/instagramPost.service";
+import type { CreateMediaContainerPayload } from "../../services/instagram.service";
+import { instagramMetricsService } from "../../services/instagramMetrics.service";
 
 export async function instagramConnectController(req: Request, res: Response, next: NextFunction) {
   try {
@@ -291,6 +294,97 @@ export async function createInstagramPhotoPostController(
 	}
 }
 
+export async function testInstagramPublishController(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { businessId } = req.params;
+    const { imageUrl, caption } = (req.body || {}) as {
+      imageUrl?: string;
+      caption?: string;
+    };
+
+    console.log('[IGTestPublish] Incoming request', { businessId, imageUrl, caption });
+
+    if (!businessId || !Types.ObjectId.isValid(businessId)) {
+      return next(
+        new CustomError(
+          "Invalid or missing businessId",
+          HttpStatusCode.BadRequest
+        )
+      );
+    }
+
+    const integration = await Integration.findOne({
+      business: businessId,
+      type: "instagram",
+      isConnected: true,
+    })
+      .select("+config.accessToken metadata.instagramAccountId")
+      .lean();
+
+    console.log('[IGTestPublish] Integration query finished', { found: !!integration });
+
+    if (!integration) {
+      return next(
+        new CustomError(
+          "Active Instagram integration not found for this business",
+          HttpStatusCode.NotFound
+        )
+      );
+    }
+
+    const igUserId = (integration as any).metadata?.instagramAccountId as
+      | string
+      | undefined;
+    const accessToken = (integration as any).config?.accessToken as
+      | string
+      | undefined;
+
+    console.log('[IGTestPublish] Integration details', { igUserId, hasAccessToken: !!accessToken });
+
+    if (!igUserId || !accessToken) {
+      return next(
+        new CustomError(
+          "Instagram integration incomplete for this business",
+          HttpStatusCode.BadRequest
+        )
+      );
+    }
+
+    const url = imageUrl && typeof imageUrl === "string" && imageUrl.length > 0
+      ? imageUrl
+      : "https://via.placeholder.com/640x640.png?text=API+Test";
+
+    const payload: CreateMediaContainerPayload = {
+      image_url: url,
+      caption: caption || "API test post. Please ignore.",
+      published: false,
+    };
+
+    console.log('[IGTestPublish] Creating media container', { igUserId, image_url: url });
+
+    const container = await instagramService.createMediaContainer(
+      igUserId,
+      accessToken,
+      payload
+    );
+
+    console.log('[IGTestPublish] Media container created', { containerId: container.id });
+
+    res.status(HttpStatusCode.Created).send({
+      message: "Instagram test media container created successfully",
+      data: container,
+    });
+    return;
+  } catch (error) {
+    console.error('[IGTestPublish] Error', { error });
+    next(error);
+  }
+}
+
 /**
  * =============================================================
  * CONTROLADOR (PARA REELS DE INSTAGRAM)
@@ -333,5 +427,309 @@ export async function createInstagramReelController(req: Request, res: Response,
      // Captura errores del servicio o validación
     console.error('[CreateInstagramReelController] ❌ Error:', error.message);
     next(error); // Pasa al manejador de errores global
+  }
+}
+
+export async function getInstagramPageMetricsController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { businessId } = req.params;
+    if (!businessId || !Types.ObjectId.isValid(businessId)) {
+      res.status(HttpStatusCode.BadRequest).send({ message: 'Invalid or missing businessId parameter' });
+      return;
+    }
+    try {
+      const integration = await Integration.findOne({
+        business: businessId,
+        type: 'instagram',
+        isConnected: true
+      }).select('+config.accessToken metadata.instagramAccountId').lean();
+
+      const accessToken = (integration as any)?.config?.accessToken as string | undefined;
+      const igUserId = (integration as any)?.metadata?.instagramAccountId as string | undefined;
+
+      if (!integration || !accessToken || !igUserId) {
+        res.status(HttpStatusCode.NotFound).send({ message: 'Active Instagram integration not found or is incomplete for this business' });
+        return;
+      }
+
+      const biz = await Business.findById(businessId).select('owner');
+      const ownerUser = biz ? await models.user.findById(biz.owner).select('subscription.plan') : null;
+      const userPlan = ((ownerUser?.subscription?.plan as any) || 'free') as 'free' | 'starter' | 'pro' | 'enterprise';
+      const maxMonthsByPlan: Record<'free' | 'starter' | 'pro' | 'enterprise', number> = { free: 1, starter: 1, pro: 3, enterprise: 6 };
+      const maxDaysByPlan: Record<'free' | 'starter' | 'pro' | 'enterprise', number> = { free: 28, starter: 28, pro: 90, enterprise: 180 };
+
+      const q = req.query as any;
+      const requestedMonths = Math.max(1, Math.min(Number(q.months || 1), maxMonthsByPlan[userPlan]));
+      const now = new Date();
+
+      const startOfMonth = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0));
+      const endOfMonth = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 23, 59, 59));
+      const monthsAgo = (d: Date, m: number) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - m, 1, 0, 0, 0));
+      const diffDays = (a: Date, b: Date) => Math.ceil((b.getTime() - a.getTime()) / 86400000);
+      const formatLocalDateTime = (d: Date, tz?: string, offsetMinutes?: number): { date: string; time: string } => {
+        if (tz && tz.trim()) {
+          const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(d);
+          const get = (type: string) => parts.find(p => p.type === type)?.value || '';
+          const year = get('year');
+          const month = get('month');
+          const day = get('day');
+          const hour = get('hour');
+          const minute = get('minute');
+          return { date: `${year}-${month}-${day}`, time: `${hour}:${minute}` };
+        }
+        if (Number.isFinite(offsetMinutes)) {
+          const adj = new Date(d.getTime() + (offsetMinutes as number) * 60000);
+          const iso = adj.toISOString();
+          return { date: iso.slice(0, 10), time: iso.slice(11, 16) };
+        }
+        const iso = d.toISOString();
+        return { date: iso.slice(0, 10), time: iso.slice(11, 16) };
+      };
+
+      let effectivePeriod: any = (q.period as any) || undefined;
+      let effectiveSince: string | undefined = q.since as string | undefined;
+      let effectiveUntil: string | undefined = q.until as string | undefined;
+      let effectivePreset: any = (q.date_preset as any) || undefined;
+      let adjusted = false;
+      let appliedView = ((q.view || '') as string).toLowerCase();
+      if (!appliedView) appliedView = 'month';
+      if (appliedView === 'week') {
+        effectivePeriod = 'day';
+        effectivePreset = 'last_7d';
+        effectiveSince = undefined;
+        effectiveUntil = undefined;
+      } else if (appliedView === 'month') {
+        const end = endOfMonth(now);
+        const start = monthsAgo(now, requestedMonths - 1);
+        const sinceDate = startOfMonth(start);
+        const untilDate = end;
+        const days = diffDays(sinceDate, untilDate);
+        const allowedDays = Math.min(maxDaysByPlan[userPlan], 90);
+        if (days > allowedDays) {
+          effectivePeriod = 'day';
+          effectiveSince = undefined;
+          effectiveUntil = undefined;
+          adjusted = true;
+          effectivePreset = userPlan === 'free' || userPlan === 'starter' ? 'last_28d' : 'last_90d';
+        } else {
+          effectivePeriod = 'day';
+          effectivePreset = undefined;
+          effectiveSince = sinceDate.toISOString();
+          effectiveUntil = untilDate.toISOString();
+        }
+      } else if (appliedView === 'custom') {
+        if (effectiveSince && effectiveUntil) {
+          const s = new Date(effectiveSince);
+          const u = new Date(effectiveUntil);
+          const days = diffDays(s, u);
+          const allowedDays = Math.min(maxDaysByPlan[userPlan], 90);
+          if (days > allowedDays) {
+            effectivePeriod = 'day';
+            effectiveSince = undefined;
+            effectiveUntil = undefined;
+            adjusted = true;
+            effectivePreset = userPlan === 'free' || userPlan === 'starter' ? 'last_28d' : 'last_90d';
+          } else {
+            effectivePeriod = 'day';
+            effectivePreset = undefined;
+            adjusted = false;
+          }
+        } else {
+          effectivePeriod = 'day';
+          effectivePreset = 'last_28d';
+          adjusted = true;
+        }
+      } else {
+        effectivePeriod = 'day';
+        effectivePreset = 'this_month';
+        effectiveSince = undefined;
+        effectiveUntil = undefined;
+      }
+
+      const metrics = [
+        'reach',
+        'profile_views',
+        'accounts_engaged',
+        'total_interactions',
+        'likes',
+        'comments',
+        'shares',
+        'saves',
+        'follows_and_unfollows',
+        'views'
+      ];
+
+      const [profile, insights] = await Promise.all([
+        instagramService.getUserProfile(igUserId, accessToken),
+        instagramService.getUserInsights(igUserId, accessToken, metrics, {
+          period: effectivePeriod || 'day',
+          since: effectiveSince,
+          until: effectiveUntil,
+          date_preset: effectivePreset || undefined,
+          metric_type: 'total_value',
+          breakdown: (q.breakdown as string | undefined)
+        })
+      ]);
+
+      let reachSeries: Array<{ end_time?: string; value?: number }> = [];
+      const wantSeries = String(q.series || '').toLowerCase() === 'true' || String(q.series || '') === '1';
+      if (wantSeries) {
+        const ts = await instagramService.getUserInsights(igUserId, accessToken, ['reach'], {
+          period: 'day',
+          since: effectiveSince,
+          until: effectiveUntil,
+          date_preset: effectivePreset || undefined,
+          metric_type: 'time_series'
+        });
+        const reachTs = (ts as any)?.reach || {};
+        reachSeries = Array.isArray(reachTs.values) ? reachTs.values : [];
+      }
+
+      const tz = q.tz && (q.tz as string).trim() ? (q.tz as string).trim() : undefined;
+      const offsetMinutes = q.offsetMinutes !== undefined ? Number(q.offsetMinutes) : undefined;
+
+      const formattedMetrics: Record<string, { total: number; averagePerDay: number; series?: Array<{ date: string; time: string; value: number }>; breakdown?: Array<{ label: string; value: number }> }> = {};
+      Object.keys(insights || {}).forEach((key) => {
+        const metric = (insights as any)[key] || {};
+        let values = Array.isArray(metric.values) ? metric.values : [];
+        if (key === 'reach' && reachSeries.length > 0) {
+          values = reachSeries;
+        }
+        const series = values.map((v: any) => {
+          const dt = v?.end_time ? new Date(v.end_time) : undefined;
+          const loc = dt ? formatLocalDateTime(dt, tz, offsetMinutes) : { date: '', time: '' };
+          const value = typeof v?.value === 'number' ? v.value : 0;
+          return { date: loc.date, time: loc.time, value };
+        });
+        const total = typeof metric.total === 'number' ? metric.total : 0;
+        let averagePerDay = 0;
+        if (series.length > 0) {
+          averagePerDay = Math.round(total / series.length);
+        } else {
+          let days = 0;
+          if (effectiveSince && effectiveUntil) {
+            const s = new Date(effectiveSince);
+            const u = new Date(effectiveUntil);
+            days = Math.max(1, Math.ceil((u.getTime() - s.getTime()) / 86400000));
+          } else if (effectivePreset === 'last_28d') {
+            days = 28;
+          } else if (effectivePreset === 'last_90d') {
+            days = 90;
+          } else if (effectivePreset === 'this_month') {
+            const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+            const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+            days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+          }
+          averagePerDay = days > 0 ? Math.round(total / days) : 0;
+        }
+        const entry: any = { total, averagePerDay };
+        if (series.length > 0) entry.series = series;
+        if (Array.isArray(metric.breakdown) && metric.breakdown.length > 0) {
+          entry.breakdown = metric.breakdown.map((b: any) => ({ label: b.label, value: b.value }));
+        }
+        formattedMetrics[key] = entry;
+      });
+
+      const data = {
+        instagram: {
+          id: (profile as any)?.id || igUserId,
+          username: (profile as any)?.username,
+          profilePictureUrl: (profile as any)?.profile_picture_url,
+          followersCount: (profile as any)?.followers_count
+        },
+        insights: {
+          period: effectivePeriod || 'day',
+          date_preset: effectivePreset || undefined,
+          range: effectiveSince || effectiveUntil ? { since: effectiveSince, until: effectiveUntil } : undefined,
+          timezone: tz || (Number.isFinite(offsetMinutes) ? `UTC${(offsetMinutes as number) >= 0 ? '+' : ''}${offsetMinutes}` : 'UTC'),
+          metrics: formattedMetrics
+        }
+      };
+
+      const filters = {
+        plan: userPlan,
+        maxMonthsByPlan: maxMonthsByPlan[userPlan],
+        maxDaysByPlan: maxDaysByPlan[userPlan],
+        view: appliedView,
+        monthsApplied: appliedView === 'month' ? requestedMonths : undefined,
+        adjusted
+      };
+
+      res.status(HttpStatusCode.Ok).send({
+        message: 'Instagram page metrics retrieved successfully',
+        data,
+        filters
+      });
+      return;
+    } catch (e: any) {
+      res.status(HttpStatusCode.BadRequest).send({ message: e?.message || 'Error retrieving Instagram page metrics' });
+      return;
+    }
+  } catch (error: any) {
+    console.error('[GetInstagramPageMetricsController] ❌ Error:', error?.message);
+    next(error);
+  }
+}
+
+export async function getInstagramFollowersMetricsController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { businessId } = req.params;
+    const q = req.query as any;
+    if (!businessId || !Types.ObjectId.isValid(businessId)) {
+      res.status(HttpStatusCode.BadRequest).send({ message: 'Invalid or missing businessId parameter' });
+      return;
+    }
+
+    try {
+      const integration = await Integration.findOne({
+        business: businessId,
+        type: 'instagram',
+        isConnected: true
+      }).select('+config.accessToken metadata.instagramAccountId').lean();
+
+      const accessToken = (integration as any)?.config?.accessToken as string | undefined;
+      const igUserId = (integration as any)?.metadata?.instagramAccountId as string | undefined;
+
+      if (!integration || !accessToken || !igUserId) {
+        res.status(HttpStatusCode.NotFound).send({ message: 'Active Instagram integration not found or is incomplete for this business' });
+        return;
+      }
+
+      const biz = await Business.findById(businessId).select('owner');
+      const ownerUser = biz ? await models.user.findById(biz.owner).select('subscription.plan') : null;
+      const userPlan = ((ownerUser?.subscription?.plan as any) || 'free') as 'free' | 'starter' | 'pro' | 'enterprise';
+      const maxDaysByPlan: Record<'free' | 'starter' | 'pro' | 'enterprise', number> = { free: 28, starter: 28, pro: 90, enterprise: 180 };
+
+      const wantSeries = String(q.series || '').toLowerCase() === 'true' || String(q.series || '') === '1';
+
+      const profile = await instagramService.getUserProfile(igUserId, accessToken);
+      const currentFollowers = (profile as any)?.followers_count || 0;
+      const windows = await instagramMetricsService.buildWindows({ igUserId, accessToken, currentFollowers, userPlan, series: wantSeries, tz: q.tz, offsetMinutes: q.offsetMinutes, businessId })
+
+      const tz = q.tz && q.tz.trim() ? q.tz.trim() : undefined;
+      const offsetMinutes = q.offsetMinutes !== undefined ? Number(q.offsetMinutes) : undefined;
+
+      res.status(HttpStatusCode.Ok).send({
+        message: 'Instagram followers growth metrics retrieved successfully',
+        data: {
+          instagram: {
+            id: (profile as any)?.id || igUserId,
+            username: (profile as any)?.username,
+            profilePictureUrl: (profile as any)?.profile_picture_url,
+            followersCount: currentFollowers
+          },
+          timezone: tz || (Number.isFinite(offsetMinutes) ? `UTC${(offsetMinutes as number) >= 0 ? '+' : ''}${offsetMinutes}` : 'UTC'),
+          windows,
+          comparisons: String(q.compare || '').toLowerCase() === 'month' ? await instagramMetricsService.buildMonthComparison(igUserId, accessToken, currentFollowers) : undefined
+        }
+      });
+      return;
+    } catch (e: any) {
+      res.status(HttpStatusCode.BadRequest).send({ message: e?.message || 'Error retrieving Instagram followers growth metrics' });
+      return;
+    }
+  } catch (error: any) {
+    console.error('[GetInstagramFollowersMetricsController] ❌ Error:', error?.message);
+    next(error);
   }
 }

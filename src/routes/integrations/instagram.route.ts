@@ -1,5 +1,5 @@
 import express from "express"
-import { instagramConnectController, instagramSavePageController, getinstagramPostsController, createInstagramPhotoPostController, createInstagramReelController } from "../../controllers/integrations/instagram.controler";
+import { instagramConnectController, instagramSavePageController, getinstagramPostsController, createInstagramPhotoPostController, createInstagramReelController, testInstagramPublishController, getInstagramPageMetricsController, getInstagramFollowersMetricsController } from "../../controllers/integrations/instagram.controler";
 import multer from "multer";
 
 
@@ -14,6 +14,10 @@ router.post('/connect-page', instagramSavePageController)
 
 router.get('/posts/:businessId', getinstagramPostsController)
 
+router.get('/metrics/:businessId', getInstagramPageMetricsController)
+
+router.get('/metrics/followers/:businessId', getInstagramFollowersMetricsController)
+
 router.post(
   '/post/publish/photo/:businessId',
   uploadMemory.array('images', 10),
@@ -25,4 +29,6 @@ router.post(
   uploadMemory.single('video'),
   createInstagramReelController
 );
+
+router.post('/post/test/:businessId', testInstagramPublishController)
 export default router

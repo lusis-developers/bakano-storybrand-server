@@ -5,6 +5,7 @@ import { HttpStatusCode } from "axios";
 import CustomError from "../../errors/customError.error";
 import { Types } from "mongoose";
 import { facebookPostService } from "../../services/facebookPost.service";
+import { facebookMetricsService } from "../../services/facebookMetrics.service";
 
 /**
  * Handles the first step of Facebook connection:
@@ -430,6 +431,31 @@ export async function getFacebookScheduledPostsController(req: Request, res: Res
     // 5. MANEJO DE ERRORES
     console.error('[GetFacebookScheduledPostsController] ❌ Error:', error.message);
     // El servicio ya simplificó el error, solo lo pasamos al middleware
+    next(error);
+  }
+}
+
+export async function getFacebookPageMetricsController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { businessId } = req.params;
+    if (!businessId || !Types.ObjectId.isValid(businessId)) {
+      res.status(HttpStatusCode.BadRequest).send({ message: 'Invalid or missing businessId parameter' });
+      return;
+    }
+    try {
+      const result = await facebookMetricsService.getBusinessPageMetrics(businessId, req.query as any)
+      res.status(HttpStatusCode.Ok).send({
+        message: 'Facebook page metrics retrieved successfully',
+        data: result.data,
+        filters: result.filters
+      });
+      return;
+    } catch (e: any) {
+      res.status(HttpStatusCode.BadRequest).send({ message: e?.message || 'Error retrieving Facebook page metrics' });
+      return;
+    }
+  } catch (error: any) {
+    console.error('[GetFacebookPageMetricsController] ❌ Error:', error?.message);
     next(error);
   }
 }
