@@ -103,10 +103,10 @@ export class InstagramMetricsService {
       const startEstimate = currentFollowers - netChange
       const formattedSeries = series
         ? seriesData.map((v: any) => {
-            const dt = v?.end_time ? new Date(v.end_time) : undefined
-            const loc = dt ? this.formatLocalDateTime(dt, tz, offsetMinutes) : { date: '', time: '' }
-            return { date: loc.date, time: loc.time, value: typeof v.value === 'number' ? v.value : 0 }
-          })
+          const dt = v?.end_time ? new Date(v.end_time) : undefined
+          const loc = dt ? this.formatLocalDateTime(dt, tz, offsetMinutes) : { date: '', time: '' }
+          return { date: loc.date, time: loc.time, value: typeof v.value === 'number' ? v.value : 0 }
+        })
         : undefined
       windows[t.key] = {
         months: t.days === 28 ? 1 : (t.days === 90 ? 3 : 6),
