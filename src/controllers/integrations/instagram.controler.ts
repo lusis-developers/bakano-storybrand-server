@@ -700,106 +700,11 @@ export async function getInstagramFollowersMetricsController(req: Request, res: 
       const userPlan = ((ownerUser?.subscription?.plan as any) || 'free') as 'free' | 'starter' | 'pro' | 'enterprise';
       const maxDaysByPlan: Record<'free' | 'starter' | 'pro' | 'enterprise', number> = { free: 28, starter: 28, pro: 90, enterprise: 180 };
 
-      const now = new Date();
-      const startOfMonth = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0));
-      const endOfMonth = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 23, 59, 59));
-      const monthsAgo = (d: Date, m: number) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - m, 1, 0, 0, 0));
-      const diffDays = (a: Date, b: Date) => Math.ceil((b.getTime() - a.getTime()) / 86400000);
-      const formatLocalDateTime = (d: Date, tz?: string, offsetMinutes?: number): { date: string; time: string } => {
-        const tzParam = q.tz && String(q.tz).trim() ? String(q.tz).trim() : undefined;
-        const offParam = q.offsetMinutes !== undefined ? Number(q.offsetMinutes) : undefined;
-        if (tzParam) {
-          const parts = new Intl.DateTimeFormat('en-US', { timeZone: tzParam, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(d);
-          const get = (type: string) => parts.find(p => p.type === type)?.value || '';
-          return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}` };
-        }
-        if (Number.isFinite(offParam)) {
-          const adj = new Date(d.getTime() + (offParam as number) * 60000);
-          const iso = adj.toISOString();
-          return { date: iso.slice(0, 10), time: iso.slice(11, 16) };
-        }
-        const iso = d.toISOString();
-        return { date: iso.slice(0, 10), time: iso.slice(11, 16) };
-      };
-
       const wantSeries = String(q.series || '').toLowerCase() === 'true' || String(q.series || '') === '1';
 
       const profile = await instagramService.getUserProfile(igUserId, accessToken);
       const currentFollowers = (profile as any)?.followers_count || 0;
-
-      type WindowKey = '1m' | '3m' | '6m';
-      const targets: { key: WindowKey; days: number; preset?: 'last_28d' | 'last_90d'; months?: number }[] = [
-        { key: '1m', days: 28, preset: 'last_28d' },
-        { key: '3m', days: 90 },
-        { key: '6m', days: 180 }
-      ];
-
-      const windows: Record<WindowKey, any> = {} as any;
-
-      for (const t of targets) {
-        const allowedDays = maxDaysByPlan[userPlan];
-        if (t.days > allowedDays) {
-          // Skip windows not allowed by plan
-          continue;
-        }
-
-        let since: string | undefined;
-        let until: string | undefined;
-        let date_preset: string | undefined;
-
-        // follower_count only allows querying last 30 days excluding current day
-        // Prefer presets when available; for custom range ensure 'until' is yesterday
-        if (t.preset) {
-          date_preset = t.preset;
-        }
-
-        // Ensure custom since/until adhere to API constraints when not using preset
-        if (!date_preset) {
-          const yesterday = new Date(Date.now() - 86400000);
-          const untilDate = new Date(Date.UTC(yesterday.getUTCFullYear(), yesterday.getUTCMonth(), yesterday.getUTCDate(), 23, 59, 59));
-          const sinceDate = new Date(untilDate.getTime() - t.days * 86400000);
-          since = sinceDate.toISOString();
-          until = untilDate.toISOString();
-        }
-
-        let netChange = 0;
-        let series: any[] = [];
-        if (t.days <= 30) {
-          const insight = await instagramService.getUserInsights(igUserId, accessToken, ['follower_count'], {
-            period: 'day',
-            since,
-            until,
-            date_preset: date_preset as any,
-            metric_type: 'time_series'
-          });
-          series = Array.isArray((insight as any)?.follower_count?.values) ? (insight as any).follower_count.values : [];
-          netChange = series.reduce((sum: number, v: any) => sum + (typeof v.value === 'number' ? v.value : 0), 0);
-          await instagramMetricsService.upsertLast30DaysFollowerDeltas(businessId, igUserId, accessToken);
-        } else {
-          const agg = await instagramMetricsService.getNetChange(igUserId, t.days);
-          netChange = agg.netChange;
-          series = [];
-        }
-        const startEstimate = currentFollowers - netChange;
-
-        const formattedSeries = wantSeries
-          ? series.map((v: any) => {
-              const dt = v?.end_time ? new Date(v.end_time) : undefined;
-              const loc = dt ? formatLocalDateTime(dt, q.tz, q.offsetMinutes) : { date: '', time: '' };
-              return { date: loc.date, time: loc.time, value: typeof v.value === 'number' ? v.value : 0 };
-            })
-          : undefined;
-
-        windows[t.key] = {
-          months: t.days === 28 ? 1 : (t.days === 90 ? 3 : 6),
-          range: since && until ? { since, until } : undefined,
-          preset: date_preset,
-          netChange,
-          currentFollowers,
-          estimatedStartFollowers: startEstimate,
-          series: formattedSeries
-        };
-      }
+      const windows = await instagramMetricsService.buildWindows({ igUserId, accessToken, currentFollowers, userPlan, series: wantSeries, tz: q.tz, offsetMinutes: q.offsetMinutes, businessId })
 
       const tz = q.tz && q.tz.trim() ? q.tz.trim() : undefined;
       const offsetMinutes = q.offsetMinutes !== undefined ? Number(q.offsetMinutes) : undefined;
@@ -815,34 +720,7 @@ export async function getInstagramFollowersMetricsController(req: Request, res: 
           },
           timezone: tz || (Number.isFinite(offsetMinutes) ? `UTC${(offsetMinutes as number) >= 0 ? '+' : ''}${offsetMinutes}` : 'UTC'),
           windows,
-          comparisons: await (async () => {
-            if (String(q.compare || '').toLowerCase() !== 'month') return undefined;
-            // follower_count supports only last 30 days excluding current day; compute current month netChange
-            const yesterday = new Date(Date.now() - 86400000);
-            const untilCurDate = new Date(Date.UTC(yesterday.getUTCFullYear(), yesterday.getUTCMonth(), yesterday.getUTCDate(), 23, 59, 59));
-            const sinceCurDate = new Date(untilCurDate.getTime() - 28 * 86400000);
-            const curInsight = await instagramService.getUserInsights(igUserId, accessToken, ['follower_count'], {
-              period: 'day',
-              since: sinceCurDate.toISOString(),
-              until: untilCurDate.toISOString(),
-              metric_type: 'time_series'
-            });
-            const curSeries = Array.isArray((curInsight as any)?.follower_count?.values) ? (curInsight as any).follower_count.values : [];
-            const curNet = curSeries.reduce((s: number, v: any) => s + (typeof v.value === 'number' ? v.value : 0), 0);
-            const prevEndFollowers = currentFollowers - curNet;
-            const changeAbs = curNet;
-            const changePct = prevEndFollowers > 0 ? Math.round((changeAbs / prevEndFollowers) * 100) : 0;
-            return {
-              month: {
-                current: { endFollowers: currentFollowers, netChange: curNet },
-                previous: { endFollowers: prevEndFollowers },
-                change: { absolute: changeAbs, percent: changePct },
-                ranges: {
-                  current: { since: sinceCurDate.toISOString(), until: untilCurDate.toISOString() }
-                }
-              }
-            };
-          })()
+          comparisons: String(q.compare || '').toLowerCase() === 'month' ? await instagramMetricsService.buildMonthComparison(igUserId, accessToken, currentFollowers) : undefined
         }
       });
       return;
