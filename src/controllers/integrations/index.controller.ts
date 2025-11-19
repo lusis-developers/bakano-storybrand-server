@@ -3,6 +3,8 @@ import { Types } from "mongoose";
 import models from "../../models";
 import { facebookService } from "../../services/facebook.service";
 import { instagramService } from "../../services/instagram.service";
+import { scrapperService } from "../../services/scrapper.service";
+import { HttpStatusCode } from "axios";
 
 export async function getIntegrationsController(
 	req: Request,
@@ -69,8 +71,52 @@ export async function getIntegrationsController(
     );
 
     return res.status(200).send({ count: enriched.length, data: enriched });
-	} catch (error) {
-		console.error("Error al obtener integraciones:", error);
-		next(error);
-	}
+  } catch (error) {
+    console.error("Error al obtener integraciones:", error);
+    next(error);
+  }
+}
+
+export async function getInstagramViralPostsController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const q = req.query;
+    const hashtagsRaw = q.hashtags;
+    const typeRaw = q.resultsType;
+    const limitRaw = q.resultsLimit;
+
+    let hashtags: string[] = [];
+    if (Array.isArray(hashtagsRaw)) {
+      hashtags = hashtagsRaw.map((v) => String(v).trim()).filter((v) => v.length > 0);
+    } else if (typeof hashtagsRaw === "string") {
+      if (hashtagsRaw.includes(",")) {
+        hashtags = hashtagsRaw.split(",").map((v) => v.trim()).filter((v) => v.length > 0);
+      } else {
+        hashtags = [hashtagsRaw.trim()].filter((v) => v.length > 0);
+      }
+    }
+
+    if (!hashtags.length) {
+      res.status(HttpStatusCode.BadRequest).send({ message: "Missing required query parameter 'hashtags'" });
+      return;
+    }
+
+    const resultsType = String(typeRaw || "posts").toLowerCase() === "reels" ? "reels" : "posts";
+    const resultsLimitNum = Math.min(Math.max(Number(limitRaw || 20), 1), 200);
+
+    try {
+      const { items, count } = await scrapperService.getInstagramViralPostsByHashtags({ hashtags, resultsType, resultsLimit: resultsLimitNum });
+      res.status(HttpStatusCode.Ok).send({
+        message: "Instagram viral posts retrieved successfully.",
+        filters: { hashtags, resultsType, resultsLimit: resultsLimitNum },
+        items,
+        count
+      });
+      return;
+    } catch (e: any) {
+      res.status(HttpStatusCode.BadRequest).send({ message: e?.message || "Error retrieving Instagram viral posts" });
+      return;
+    }
+  } catch (error) {
+    next(error);
+  }
 }
