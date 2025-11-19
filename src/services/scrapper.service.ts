@@ -20,14 +20,14 @@ class ScrapperService {
     this.client = new ApifyClient({ token: this.token })
   }
 
-  async runInstagramHashtagActor(params: { hashtags: string[]; resultsType?: "posts" | "reels"; resultsLimit?: number; actorId?: string; tokenOverride?: string }): Promise<{ items: any[]; run: any }> {
+  async runInstagramHashtagActor(params: { hashtags: string[]; resultsType?: "posts" | "reels" | "stories"; resultsLimit?: number; actorId?: string; tokenOverride?: string; keywordSearch?: boolean }): Promise<{ items: any[]; run: any }> {
     const actorId = params.actorId || process.env.APIFY_INSTAGRAM_ACTOR_ID || "reGe1ST3OBgYZSsZJ"
-    const resultsType = params.resultsType || "posts"
+    const resultsType = params.resultsType || "stories"
     const resultsLimit = Math.min(Math.max(Number(params.resultsLimit || 20), 1), 200)
     if (params.tokenOverride) this.token = params.tokenOverride
     await this.ensureClient()
     try {
-      const input = { hashtags: params.hashtags, resultsType, resultsLimit }
+      const input = { hashtags: params.hashtags, resultsType, resultsLimit, keywordSearch: Boolean(params.keywordSearch) }
       const run = await this.client.actor(actorId).call(input)
       const { items } = await this.client.dataset(run.defaultDatasetId).listItems()
       return { items, run }
@@ -67,7 +67,7 @@ class ScrapperService {
     })
   }
 
-  async getInstagramViralPostsByHashtags(params: { hashtags: string[]; resultsType?: "posts" | "reels"; resultsLimit?: number; actorId?: string; tokenOverride?: string }): Promise<{ items: Array<{ caption: string; ownerFullName?: string; ownerUsername?: string; url?: string; commentsCount?: number; firstComment?: string; likesCount?: number; timestamp?: string; hashtags: string[] }>; count: number }> {
+  async getInstagramViralPostsByHashtags(params: { hashtags: string[]; resultsType?: "posts" | "reels" | "stories"; resultsLimit?: number; actorId?: string; tokenOverride?: string; keywordSearch?: boolean }): Promise<{ items: Array<{ caption: string; ownerFullName?: string; ownerUsername?: string; url?: string; commentsCount?: number; firstComment?: string; likesCount?: number; timestamp?: string; hashtags: string[] }>; count: number }> {
     const { items } = await this.runInstagramHashtagActor(params)
     const normalized = this.mapInstagramItemsToSample(items)
     return { items: normalized, count: normalized.length }
