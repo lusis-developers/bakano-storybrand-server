@@ -16,6 +16,7 @@ import {
   canCreateBusinessController
 } from '../controllers/business.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
+import { listPendingInvitationsForUserController } from '../controllers/business.controller';
 
 const router = express.Router();
 
@@ -40,5 +41,6 @@ router.patch('/:id/team/:userId/role', updateTeamMemberRoleController);
 router.delete('/:id/team/:userId/revoke', revokeTeamMemberController);
 router.get('/:id/team/audit', listTeamAuditController);
 router.get('/quota/can-create', canCreateBusinessController);
+router.get('/team/invitations/pending', listPendingInvitationsForUserController);
 
 export default router;
