@@ -1,6 +1,7 @@
 import express from "express"
 import { instagramConnectController, instagramSavePageController, getinstagramPostsController, createInstagramPhotoPostController, createInstagramReelController, testInstagramPublishController, getInstagramPageMetricsController, getInstagramFollowersMetricsController } from "../../controllers/integrations/instagram.controler";
 import multer from "multer";
+import { getInstagramViralPostsController } from "../../controllers/integrations/index.controller";
 
 
 const storage = multer.memoryStorage();
@@ -31,4 +32,6 @@ router.post(
 );
 
 router.post('/post/test/:businessId', testInstagramPublishController)
+
+router.get("/viral", getInstagramViralPostsController)
 export default router
