@@ -1,5 +1,5 @@
 import express from "express"
-import { instagramConnectController, instagramSavePageController, getinstagramPostsController, createInstagramPhotoPostController, createInstagramReelController, testInstagramPublishController } from "../../controllers/integrations/instagram.controler";
+import { instagramConnectController, instagramSavePageController, getinstagramPostsController, createInstagramPhotoPostController, createInstagramReelController, testInstagramPublishController, getInstagramPageMetricsController, getInstagramFollowersMetricsController } from "../../controllers/integrations/instagram.controler";
 import multer from "multer";
 
 
@@ -13,6 +13,10 @@ router.post('/connect', instagramConnectController)
 router.post('/connect-page', instagramSavePageController)
 
 router.get('/posts/:businessId', getinstagramPostsController)
+
+router.get('/metrics/:businessId', getInstagramPageMetricsController)
+
+router.get('/metrics/followers/:businessId', getInstagramFollowersMetricsController)
 
 router.post(
   '/post/publish/photo/:businessId',
