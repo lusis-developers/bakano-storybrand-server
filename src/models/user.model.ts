@@ -26,6 +26,15 @@ export interface IUser extends Document {
   email: string;
   password: string;
   birthDate?: Date;
+  nationalId?: string;
+  phone?: string;
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+  };
   businesses: Types.ObjectId[];
   role: 'admin' | 'client';
   isVerified: boolean;
@@ -63,6 +72,23 @@ const userSchema = new Schema<IUser>({
     required: [true, 'Password is required'],
     minlength: [6, 'Password must be at least 6 characters'],
     select: false
+  },
+  nationalId: {
+    type: String,
+    trim: true,
+    maxlength: [32, 'National ID cannot exceed 32 characters']
+  },
+  phone: {
+    type: String,
+    trim: true,
+    match: [/^[\+]?[1-9][\d]{0,15}$/, 'Please enter a valid phone number']
+  },
+  address: {
+    street: { type: String, trim: true },
+    city: { type: String, trim: true },
+    state: { type: String, trim: true },
+    zipCode: { type: String, trim: true },
+    country: { type: String, trim: true }
   },
   birthDate: {
     type: Date,
