@@ -198,7 +198,10 @@ export async function getUserByIdController(req: Request, res: Response, next: N
 export async function updateUserController(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { id } = req.params;
-    const { firstName, lastName, email, birthDate } = req.body;
+    const { firstName, lastName, email, birthDate, nationalId, phone, address } = req.body as {
+      firstName?: string; lastName?: string; email?: string; birthDate?: string;
+      nationalId?: string; phone?: string; address?: { street?: string; city?: string; state?: string; zipCode?: string; country?: string };
+    };
 
     if (!id) {
       res.status(HttpStatusCode.BadRequest).send({ 
@@ -245,6 +248,32 @@ export async function updateUserController(req: Request, res: Response, next: Ne
         return;
       }
       updateData.birthDate = birthDateObj;
+    }
+    if (nationalId) {
+      const trimmed = String(nationalId).trim();
+      if (!trimmed || trimmed.length < 5) {
+        res.status(HttpStatusCode.BadRequest).send({ success: false, message: 'nationalId must be valid' });
+        return;
+      }
+      updateData.nationalId = trimmed;
+    }
+    if (phone) {
+      const trimmed = String(phone).trim();
+      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+      if (!phoneRegex.test(trimmed)) {
+        res.status(HttpStatusCode.BadRequest).send({ success: false, message: 'Please enter a valid phone number' });
+        return;
+      }
+      updateData.phone = trimmed;
+    }
+    if (address && typeof address === 'object') {
+      updateData.address = {
+        street: address.street?.trim(),
+        city: address.city?.trim(),
+        state: address.state?.trim(),
+        zipCode: address.zipCode?.trim(),
+        country: address.country?.trim()
+      };
     }
 
     const updatedUser = await models.user.findByIdAndUpdate(
