@@ -99,7 +99,7 @@ export async function startSubscriptionController(req: AuthRequest, res: Respons
       return;
     }
 
-    const { plan, billingInterval, provider = 'payphone', trialDays = 0, priceId, amount, currency } = req.body as {
+    const { plan, billingInterval, provider = 'payphone', trialDays = 0, priceId, amount, currency, nationalId, phone, address } = req.body as {
       plan: string; // permite alias del frontend como 'advanced'
       billingInterval: BillingInterval;
       provider?: 'payphone' | 'stripe' | 'manual';
@@ -107,6 +107,9 @@ export async function startSubscriptionController(req: AuthRequest, res: Respons
       priceId?: string;
       amount?: number;
       currency?: string;
+      nationalId?: string;
+      phone?: string;
+      address?: { street?: string; city?: string; state?: string; zipCode?: string; country?: string };
     };
 
     // Normalizar alias de plan provenientes del frontend
@@ -128,10 +131,43 @@ export async function startSubscriptionController(req: AuthRequest, res: Respons
       return;
     }
 
-    const user = await models.user.findById(userId).select('subscription');
+    const user = await models.user.findById(userId);
     if (!user) {
       res.status(HttpStatusCode.NotFound).send({ success: false, message: 'Usuario no encontrado' });
       return;
+    }
+
+    // Validate required billing identity fields
+    const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+    const hasAddress = address && (address.street || address.city || address.country);
+    if (!nationalId || typeof nationalId !== 'string' || nationalId.trim().length < 5) {
+      res.status(HttpStatusCode.BadRequest).send({ success: false, message: 'nationalId is required and must be valid' });
+      return;
+    }
+    if (!phone || typeof phone !== 'string' || !phoneRegex.test(phone)) {
+      res.status(HttpStatusCode.BadRequest).send({ success: false, message: 'phone is required and must be valid' });
+      return;
+    }
+    if (!hasAddress || typeof address !== 'object') {
+      res.status(HttpStatusCode.BadRequest).send({ success: false, message: 'address is required (include at least street, city, country)' });
+      return;
+    }
+
+    // Insert billing identity into user if missing
+    const patch: any = {};
+    if (!user.nationalId) patch.nationalId = nationalId.trim();
+    if (!user.phone) patch.phone = phone.trim();
+    if (!user.address || (!user.address.street && !user.address.city && !user.address.country)) {
+      patch.address = {
+        street: address.street?.trim(),
+        city: address.city?.trim(),
+        state: address.state?.trim(),
+        zipCode: address.zipCode?.trim(),
+        country: address.country?.trim()
+      };
+    }
+    if (Object.keys(patch).length > 0) {
+      await models.user.updateOne({ _id: user._id }, { $set: patch });
     }
 
     const now = new Date();
