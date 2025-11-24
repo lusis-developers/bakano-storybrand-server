@@ -170,15 +170,67 @@ export class FacebookMetricsService {
       'page_total_actions'
     ]
 
-    const [followers, insights] = await Promise.all([
-      facebookService.getPageFollowerStats(pageAccessToken, pageId),
-      facebookService.getPageInsights(pageAccessToken, pageId, metrics, {
+    let followers: any
+    let insights: any
+    try {
+      const params = {
         period: effectivePeriod || 'day',
         since: effectiveSince,
         until: effectiveUntil,
         date_preset: effectivePreset || undefined
+      }
+      const startTs = Date.now()
+      const result = await Promise.all([
+        facebookService.getPageFollowerStats(pageAccessToken, pageId),
+        facebookService.getPageInsights(pageAccessToken, pageId, metrics, params)
+      ])
+      const durationMs = Date.now() - startTs
+      followers = result[0]
+      insights = result[1]
+      console.log('[FacebookMetrics] insights ok', { pageId, metrics, params, durationMs })
+    } catch (e: any) {
+      const errMsg = e?.response?.data?.error?.message || e?.message || String(e)
+      console.error('[FacebookMetrics] insights error', {
+        pageId,
+        metrics,
+        period: effectivePeriod || 'day',
+        since: effectiveSince,
+        until: effectiveUntil,
+        date_preset: effectivePreset || undefined,
+        plan: userPlan,
+        view: appliedView,
+        message: errMsg
       })
-    ])
+      if (/valid insights metric/i.test(errMsg) || /Invalid parameter/i.test(errMsg)) {
+        const params = {
+          period: effectivePeriod || 'day',
+          since: effectiveSince,
+          until: effectiveUntil,
+          date_preset: effectivePreset || undefined
+        }
+        const valid: Record<string, { total?: number; values?: Array<{ end_time?: string; value?: number }> }> = {}
+        const invalid: string[] = []
+        for (const m of metrics) {
+          try {
+            const r = await facebookService.getPageInsights(pageAccessToken, pageId, [m], params)
+            Object.assign(valid, r)
+          } catch (inner: any) {
+            invalid.push(m)
+            console.warn('[FacebookMetrics] skipping invalid metric', { metric: m, message: inner?.message || String(inner) })
+          }
+        }
+        if (Object.keys(valid).length > 0) {
+          insights = valid
+          followers = await facebookService.getPageFollowerStats(pageAccessToken, pageId)
+          adjusted = true
+          console.log('[FacebookMetrics] partial insights with valid metrics', { valid: Object.keys(valid), invalid })
+        } else {
+          throw e
+        }
+      } else {
+        throw e
+      }
+    }
 
     const tz = query.tz && query.tz.trim() ? query.tz.trim() : undefined
     const offsetMinutes = query.offsetMinutes !== undefined ? Number(query.offsetMinutes) : undefined
@@ -217,6 +269,9 @@ export class FacebookMetricsService {
       view: appliedView,
       monthsApplied: appliedView === 'month' ? requestedMonths : undefined,
       adjusted
+    }
+    if (adjusted) {
+      (filters as any).metricsRequested = metrics
     }
 
     return { data, filters }
