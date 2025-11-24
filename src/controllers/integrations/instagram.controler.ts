@@ -546,22 +546,17 @@ export async function getInstagramPageMetricsController(req: Request, res: Respo
         effectiveUntil = undefined;
       }
 
-      const metrics = [
+      const metricsTotal = [
         'reach',
         'profile_views',
         'accounts_engaged',
         'total_interactions',
-        'likes',
-        'comments',
-        'shares',
-        'saves',
-        'follows_and_unfollows',
         'views'
       ];
 
-      const [profile, insights] = await Promise.all([
+      const [profile, insightsTotal] = await Promise.all([
         instagramService.getUserProfile(igUserId, accessToken),
-        instagramService.getUserInsights(igUserId, accessToken, metrics, {
+        instagramService.getUserInsights(igUserId, accessToken, metricsTotal, {
           period: effectivePeriod || 'day',
           since: effectiveSince,
           until: effectiveUntil,
@@ -571,29 +566,40 @@ export async function getInstagramPageMetricsController(req: Request, res: Respo
         })
       ]);
 
-      let reachSeries: Array<{ end_time?: string; value?: number }> = [];
+      const followerInsightTs = await instagramService.getUserInsights(igUserId, accessToken, ['follower_count'], {
+        period: 'day',
+        since: effectiveSince,
+        until: effectiveUntil,
+        date_preset: effectivePreset || undefined,
+        metric_type: 'time_series'
+      });
+
       const wantSeries = String(q.series || '').toLowerCase() === 'true' || String(q.series || '') === '1';
+      let seriesByMetric: Record<string, Array<{ end_time?: string; value?: number }>> = {};
       if (wantSeries) {
-        const ts = await instagramService.getUserInsights(igUserId, accessToken, ['reach'], {
+        const tsMetrics = ['reach'];
+        const ts = await instagramService.getUserInsights(igUserId, accessToken, tsMetrics, {
           period: 'day',
           since: effectiveSince,
           until: effectiveUntil,
           date_preset: effectivePreset || undefined,
           metric_type: 'time_series'
         });
-        const reachTs = (ts as any)?.reach || {};
-        reachSeries = Array.isArray(reachTs.values) ? reachTs.values : [];
+        tsMetrics.forEach((m) => {
+          const entry = (ts as any)?.[m] || {};
+          seriesByMetric[m] = Array.isArray(entry.values) ? entry.values : [];
+        });
       }
 
       const tz = q.tz && (q.tz as string).trim() ? (q.tz as string).trim() : undefined;
       const offsetMinutes = q.offsetMinutes !== undefined ? Number(q.offsetMinutes) : undefined;
 
       const formattedMetrics: Record<string, { total: number; averagePerDay: number; series?: Array<{ date: string; time: string; value: number }>; breakdown?: Array<{ label: string; value: number }> }> = {};
-      Object.keys(insights || {}).forEach((key) => {
-        const metric = (insights as any)[key] || {};
+      Object.keys(insightsTotal || {}).forEach((key) => {
+        const metric = (insightsTotal as any)[key] || {};
         let values = Array.isArray(metric.values) ? metric.values : [];
-        if (key === 'reach' && reachSeries.length > 0) {
-          values = reachSeries;
+        if (wantSeries && seriesByMetric[key] && seriesByMetric[key].length > 0) {
+          values = seriesByMetric[key];
         }
         const series = values.map((v: any) => {
           const dt = v?.end_time ? new Date(v.end_time) : undefined;
@@ -629,6 +635,22 @@ export async function getInstagramPageMetricsController(req: Request, res: Respo
         }
         formattedMetrics[key] = entry;
       });
+
+      const followerMetric = (followerInsightTs as any)?.follower_count || {};
+      const followerValues = Array.isArray(followerMetric.values) ? followerMetric.values : [];
+      const followerSeries = followerValues.map((v: any) => {
+        const dt = v?.end_time ? new Date(v.end_time) : undefined;
+        const loc = dt ? formatLocalDateTime(dt, tz, offsetMinutes) : { date: '', time: '' };
+        const value = typeof v?.value === 'number' ? v.value : 0;
+        return { date: loc.date, time: loc.time, value };
+      });
+      const followerTotal = followerSeries.reduce((sum: number, s: any) => sum + (typeof s.value === 'number' ? s.value : 0), 0);
+      const followerAvg = followerSeries.length > 0 ? Math.round(followerTotal / followerSeries.length) : 0;
+      formattedMetrics['follower_count'] = {
+        total: followerTotal,
+        averagePerDay: followerAvg,
+        series: wantSeries ? followerSeries : undefined
+      };
 
       const data = {
         instagram: {
