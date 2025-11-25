@@ -235,8 +235,18 @@ integrationSchema.statics.saveAdAccountId = async function(
 ): Promise<IIntegration | null> {
   const integration = await this.findOneAndUpdate(
     { business: businessId, type: 'facebook' },
-    { $set: { 'metadata.adAccountId': adAccountId } },
-    { new: true }
+    {
+      $set: { 'metadata.adAccountId': adAccountId },
+      $setOnInsert: {
+        name: 'Facebook',
+        type: 'facebook',
+        business: businessId,
+        isActive: true,
+        isConnected: false,
+        metadata: { status: 'pending_ad_account', adAccountId }
+      }
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
   );
   return integration;
 };
