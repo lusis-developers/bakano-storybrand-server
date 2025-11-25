@@ -89,6 +89,8 @@ export async function facebookSavePageController(req: Request, res: Response, ne
       ));
     }
 
+    await models.business.updateOne({ _id: business }, { $addToSet: { integrations: integration._id } });
+
 
     console.log(`[FacebookSavePageController] ✅ Integración finalizada para el negocio ${business} con la página ${pageName}.`);
 
