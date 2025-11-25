@@ -5,10 +5,6 @@ import CustomError from "../../errors/customError.error";
 import models from "../../models";
 import {
   facebookMarketingService,
-  CreateCampaignParams,
-  CreateAdSetParams,
-  CreateAdCreativeParams,
-  CreateAdParams,
 } from "../../services/facebookMarketing.service";
 import { facebookService } from "../../services/facebook.service";
 
@@ -138,6 +134,8 @@ export async function saveAdAccountController(
       );
     }
 
+    await models.business.updateOne({ _id: businessId }, { $addToSet: { integrations: integration._id } });
+
     res.status(HttpStatusCode.Ok).send({
       message: "Ad account saved successfully",
       adAccountId: normalized,
@@ -194,6 +192,8 @@ export async function saveUserAccessTokenController(
       );
     }
 
+    await models.business.updateOne({ _id: businessId }, { $addToSet: { integrations: integration._id } });
+
     res.status(HttpStatusCode.Ok).send({
       message: "User access token saved successfully",
       expiresIn: exchange.expires_in,
@@ -203,104 +203,3 @@ export async function saveUserAccessTokenController(
     next(error);
   }
 }
-
-export async function orchestrateCampaignController(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
-  try {
-    const { businessId } = req.params;
-    if (!businessId || !Types.ObjectId.isValid(businessId)) {
-      return next(
-        new CustomError(
-          "Invalid or missing businessId parameter",
-          HttpStatusCode.BadRequest
-        )
-      );
-    }
-
-    const {
-      adAccountId,
-      campaign,
-      adset,
-      creative,
-      ad,
-    }: {
-      adAccountId?: string;
-      campaign: CreateCampaignParams & { status?: string };
-      adset: CreateAdSetParams;
-      creative: CreateAdCreativeParams;
-      ad: Omit<CreateAdParams, "adset_id" | "creative"> & {
-        status?: "ACTIVE" | "PAUSED";
-      };
-    } = req.body || {};
-
-    const integration = await models.integration
-      .findOne({ business: businessId, type: "facebook", isConnected: true })
-      .select("+config.accessToken metadata");
-
-    if (!integration) {
-      return next(
-        new CustomError(
-          "Active Facebook integration not found for this business",
-          HttpStatusCode.NotFound
-        )
-      );
-    }
-
-    const userAccessToken = integration.metadata?.userAccessToken;
-    if (!userAccessToken) {
-      return next(
-        new CustomError(
-          "No user access token available to manage ads. Reconnect and grant ads permissions.",
-          HttpStatusCode.BadRequest
-        )
-      );
-    }
-
-    const selectedAdAccountId = adAccountId || integration.metadata?.adAccountId;
-    if (!selectedAdAccountId) {
-      return next(
-        new CustomError(
-          "Missing adAccountId. Provide it in body or save it in integration metadata.",
-          HttpStatusCode.BadRequest
-        )
-      );
-    }
-
-    const result = await facebookMarketingService.orchestrateCampaign(
-      selectedAdAccountId,
-      { campaign, adset, creative, ad: { name: ad?.name, status: ad?.status } },
-      userAccessToken
-    );
-
-    return res.status(HttpStatusCode.Created).send({
-      message: "Marketing campaign orchestrated successfully",
-      adAccountId: selectedAdAccountId,
-      campaign: result.campaign,
-      adset: result.adset,
-      creative: result.creative,
-      ad: result.ad,
-    });
-  } catch (error: any) {
-    console.error('errorsote: ', error.response.data || 'no existe esto')
-    const fbErr = error?.response?.data?.error || error?.meta;
-    if (fbErr) {
-      const payload = {
-        message: fbErr?.message || "Request failed",
-        type: fbErr?.type,
-        code: fbErr?.code,
-        error_subcode: fbErr?.error_subcode,
-        error_user_title: fbErr?.error_user_title,
-        error_user_msg: fbErr?.error_user_msg,
-        fbtrace_id: fbErr?.fbtrace_id,
-      };
-      res.status(HttpStatusCode.BadRequest).send(payload);
-      return;
-    }
-    res.status(HttpStatusCode.InternalServerError).send({ message: "Unexpected error orchestrating campaign." });
-    return;
-  }
-}
-
