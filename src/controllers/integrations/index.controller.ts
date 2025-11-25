@@ -14,7 +14,8 @@ export async function getIntegrationsController(
 	try {
 		const { businessId } = req.params;
 		if (!businessId || !Types.ObjectId.isValid(businessId)) {
-			return res.status(400).send({ message: "businessId inválido" });
+			res.status(HttpStatusCode.BadRequest).send({ message: "Invalid or missing businessId parameter" });
+			return;
 		}
 
     // Seleccionamos explícitamente el accessToken para Instagram (oculto por defecto)
@@ -70,11 +71,12 @@ export async function getIntegrationsController(
       })
     );
 
-    return res.status(200).send({ count: enriched.length, data: enriched });
-  } catch (error) {
-    console.error("Error al obtener integraciones:", error);
-    next(error);
-  }
+		res.status(HttpStatusCode.Ok).send({ message: "Integrations retrieved successfully", count: enriched.length, data: enriched });
+		return;
+	} catch (error) {
+		console.error("Error al obtener integraciones:", error);
+		next(error);
+	}
 }
 
 export async function getInstagramViralPostsController(req: Request, res: Response, next: NextFunction): Promise<void> {
