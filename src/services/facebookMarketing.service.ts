@@ -353,20 +353,43 @@ export class FacebookMarketingService {
     if (!rows.length) return [];
 
     const adIds = rows.map(r => String(r.ad_id));
-    const batchRequests = adIds.map((id) => ({
-      method: 'GET',
-      relative_url: `/${id}?fields=${[
-        'id',
-        'name',
-        'adset_id',
-        'campaign_id',
-        'creative{effective_object_story_id,object_story_id,thumbnail_url,object_story_spec{link_data{link,call_to_action{type},picture},video_data{video_id}}}'
-      ].join(',')}`
-    }));
-    const detailsUrl = `https://graph.facebook.com/${this.config.apiVersion}`;
-    const detailsParams = { access_token: userAccessToken, batch: JSON.stringify(batchRequests) };
-    const detailsResp = await axios.post<any[]>(detailsUrl, null, { params: detailsParams });
-    const details: any[] = detailsResp.data.map(r => (r && r.code === 200) ? JSON.parse(r.body) : {});
+    const batchRequests: any[] = [];
+    for (const id of adIds) {
+      batchRequests.push({
+        method: 'GET',
+        relative_url: `/${id}?fields=${[
+          'id',
+          'name',
+          'adset_id',
+          'campaign_id',
+          'creative{effective_object_story_id,object_story_id,thumbnail_url,object_story_spec{link_data{link,call_to_action{type},picture},video_data{video_id}}}'
+        ].join(',')}`
+      });
+      let insightsQuery = `fields=${[
+        'impressions', 'reach', 'spend', 'clicks', 'ctr', 'cpm', 'actions', 'cost_per_action_type', 'date_start', 'date_stop'
+      ].join(',')}&breakdowns=publisher_platform`;
+      if (options?.date_preset) insightsQuery += `&date_preset=${options.date_preset}`;
+      if (options?.since || options?.until) {
+        const timeRange = JSON.stringify({ since: options?.since, until: options?.until });
+        insightsQuery += `&time_range=${timeRange}`;
+      }
+      batchRequests.push({
+        method: 'GET',
+        relative_url: `/${id}/insights?${insightsQuery}`
+      });
+    }
+    const batchUrl = `https://graph.facebook.com/${this.config.apiVersion}`;
+    const batchParams = { access_token: userAccessToken, batch: JSON.stringify(batchRequests) };
+    const batchResp = await axios.post<any[]>(batchUrl, null, { params: batchParams });
+    const batchData = Array.isArray(batchResp.data) ? batchResp.data : [];
+    const details: any[] = [];
+    const breakdowns: any[] = [];
+    for (let i = 0; i < adIds.length; i++) {
+      const detailsResult = batchData[i * 2];
+      const insightsResult = batchData[i * 2 + 1];
+      details.push((detailsResult && detailsResult.code === 200) ? JSON.parse(detailsResult.body) : {});
+      breakdowns.push((insightsResult && insightsResult.code === 200) ? JSON.parse(insightsResult.body) : {});
+    }
 
     const storyIds: string[] = [];
     const videoIds: string[] = [];
@@ -383,6 +406,7 @@ export class FacebookMarketingService {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const detail = details[i] || {};
+      const breakdownData = breakdowns[i]?.data;
       const sid = detail?.creative?.effective_object_story_id || detail?.creative?.object_story_id;
       const vid = detail?.creative?.object_story_spec?.video_data?.video_id;
       const linkData = detail?.creative?.object_story_spec?.link_data;
@@ -402,6 +426,7 @@ export class FacebookMarketingService {
           pictureUrl: linkData?.picture
         },
         metrics: row,
+        platformBreakdown: Array.isArray(breakdownData) ? breakdownData : [],
         adsetId: detail?.adset_id,
         campaignId: detail?.campaign_id
       });
