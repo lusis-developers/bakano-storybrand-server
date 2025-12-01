@@ -200,9 +200,6 @@ export async function createChatController(
 			purpose: purpose || "general",
 			aiProvider: aiProvider || "gemini",
 			aiModel: aiModel?.trim(),
-			systemPrompt:
-				systemPrompt?.trim() ||
-				"Eres un asistente de marketing que analiza métricas y contenido de IG/FB y recomienda acciones claras y accionables para el usuario.",
 			messages: [],
 		});
 
