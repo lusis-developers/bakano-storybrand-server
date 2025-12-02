@@ -1,5 +1,5 @@
 import express from "express"
-import { instagramConnectController, instagramSavePageController, getinstagramPostsController, createInstagramPhotoPostController, createInstagramReelController, testInstagramPublishController, getInstagramPageMetricsController, getInstagramFollowersMetricsController } from "../../controllers/integrations/instagram.controler";
+import { instagramConnectController, instagramSavePageController, getinstagramPostsController, createInstagramPhotoPostController, createInstagramReelController, testInstagramPublishController, getInstagramPageMetricsController, getInstagramFollowersMetricsController, getInstagramProfilePictureController } from "../../controllers/integrations/instagram.controler";
 import multer from "multer";
 import { getInstagramViralPostsController } from "../../controllers/integrations/index.controller";
 
@@ -18,6 +18,8 @@ router.get('/posts/:businessId', getinstagramPostsController)
 router.get('/metrics/:businessId', getInstagramPageMetricsController)
 
 router.get('/metrics/followers/:businessId', getInstagramFollowersMetricsController)
+
+router.get('/profile-picture/:businessId', getInstagramProfilePictureController)
 
 router.post(
   '/post/publish/photo/:businessId',
