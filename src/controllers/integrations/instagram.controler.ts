@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { HttpStatusCode } from "axios";
 import CustomError from "../../errors/customError.error";
-import { listLinkedInstagramAccounts, LinkedInstagramAccount } from "../../services/instagram-pages.service";
+import { listLinkedInstagramAccounts, LinkedInstagramAccount, getInstagramProfilePictureUrl } from "../../services/instagram-pages.service";
 import { Integration } from "../../models/integration.model";
 import { Business } from "../../models/business.model";
 import models from "../../models";
@@ -752,6 +752,46 @@ export async function getInstagramFollowersMetricsController(req: Request, res: 
     }
   } catch (error: any) {
     console.error('[GetInstagramFollowersMetricsController] ❌ Error:', error?.message);
+    next(error);
+  }
+}
+
+export async function getInstagramProfilePictureController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { businessId } = req.params;
+    if (!businessId || !Types.ObjectId.isValid(businessId)) {
+      res.status(HttpStatusCode.BadRequest).send({ message: 'Invalid or missing businessId parameter' });
+      return;
+    }
+
+    try {
+      const integration = await Integration.findOne({
+        business: businessId,
+        type: 'instagram',
+        isConnected: true
+      }).select('+config.accessToken metadata.instagramAccountId').lean();
+
+      const accessToken = (integration as any)?.config?.accessToken as string | undefined;
+      const igUserId = (integration as any)?.metadata?.instagramAccountId as string | undefined;
+
+      if (!integration || !accessToken || !igUserId) {
+        res.status(HttpStatusCode.NotFound).send({ message: 'Active Instagram integration not found or is incomplete for this business' });
+        return;
+      }
+
+      const profilePictureUrl = await getInstagramProfilePictureUrl(igUserId, accessToken);
+
+      res.status(HttpStatusCode.Ok).send({
+        message: 'Instagram profile picture URL retrieved successfully',
+        profilePictureUrl
+      });
+      return;
+    } catch (e: any) {
+      res.status(HttpStatusCode.BadRequest).send({ message: e?.message || 'Error retrieving Instagram profile picture URL' });
+      return;
+    }
+  } catch (error: any) {
+    console.error('[GetInstagramProfilePictureController] ❌ Error:', error?.message);
     next(error);
   }
 }
