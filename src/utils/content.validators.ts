@@ -90,7 +90,11 @@ export async function validateBusinessExists(businessId: string, res: Response) 
 export async function validateContentOwnership(content: any, userId: string, res: Response) {
   const business = await models.business.findOne({
     _id: content.business,
-    owner: userId
+    $or: [
+      { owner: userId },
+      { employees: new Types.ObjectId(userId) },
+      { teamMembers: { $elemMatch: { user: new Types.ObjectId(userId), status: { $in: ['active', 'invited'] } } } }
+    ]
   });
 
   if (!business) {
@@ -108,7 +112,11 @@ export async function validateContentOwnership(content: any, userId: string, res
 export async function validateBusinessOwnership(businessId: string, userId: string, res: Response) {
   const business = await models.business.findOne({
     _id: businessId,
-    owner: userId
+    $or: [
+      { owner: userId },
+      { employees: new Types.ObjectId(userId) },
+      { teamMembers: { $elemMatch: { user: new Types.ObjectId(userId), status: { $in: ['active', 'invited'] } } } }
+    ]
   });
 
   if (!business) {

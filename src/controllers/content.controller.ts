@@ -53,7 +53,7 @@ export async function createContentProject(req: AuthRequest, res: Response, next
       $or: [
         { owner: req.user.id },
         { employees: new Types.ObjectId(req.user.id) },
-        { teamMembers: { $elemMatch: { user: new Types.ObjectId(req.user.id), status: 'active' } } }
+        { teamMembers: { $elemMatch: { user: new Types.ObjectId(req.user.id), status: { $in: ['active', 'invited'] } } } }
       ]
     });
 
@@ -304,7 +304,11 @@ export async function updateQuestions(req: AuthRequest, res: Response, next: Nex
     // Verify business belongs to user
     const business = await models.business.findOne({
       _id: content.business,
-      owner: req.user.id
+      $or: [
+        { owner: req.user.id },
+        { employees: new Types.ObjectId(req.user.id) },
+        { teamMembers: { $elemMatch: { user: new Types.ObjectId(req.user.id), status: { $in: ['active', 'invited'] } } } }
+      ]
     });
 
     if (!business) {
@@ -507,7 +511,13 @@ export async function getUserContentProjects(req: AuthRequest, res: Response, ne
     }
 
     // Get user's businesses
-    const userBusinesses = await models.business.find({ owner: req.user.id }).select('_id');
+    const userBusinesses = await models.business.find({
+      $or: [
+        { owner: req.user.id },
+        { employees: new Types.ObjectId(req.user.id) },
+        { teamMembers: { $elemMatch: { user: new Types.ObjectId(req.user.id), status: { $in: ['active', 'invited'] } } } }
+      ]
+    }).select('_id');
     const businessIds = userBusinesses.map((b: any) => b._id);
 
     query.business = { $in: businessIds };
@@ -575,7 +585,11 @@ export async function getScripts(req: AuthRequest, res: Response, next: NextFunc
     // Verify business belongs to user
     const business = await models.business.findOne({
       _id: content.business,
-      owner: req.user.id
+      $or: [
+        { owner: req.user.id },
+        { employees: new Types.ObjectId(req.user.id) },
+        { teamMembers: { $elemMatch: { user: new Types.ObjectId(req.user.id), status: { $in: ['active', 'invited'] } } } }
+      ]
     });
 
     if (!business) {
@@ -722,7 +736,11 @@ export async function deleteScript(req: AuthRequest, res: Response, next: NextFu
     // Verify business belongs to user
     const business = await models.business.findOne({
       _id: content.business,
-      owner: req.user.id
+      $or: [
+        { owner: req.user.id },
+        { employees: new Types.ObjectId(req.user.id) },
+        { teamMembers: { $elemMatch: { user: new Types.ObjectId(req.user.id), status: { $in: ['active', 'invited'] } } } }
+      ]
     });
 
     if (!business) {
@@ -808,7 +826,11 @@ export async function toggleScriptCompletion(req: AuthRequest, res: Response, ne
     // Verify business belongs to user
     const business = await models.business.findOne({
       _id: content.business,
-      owner: req.user.id
+      $or: [
+        { owner: req.user.id },
+        { employees: new Types.ObjectId(req.user.id) },
+        { teamMembers: { $elemMatch: { user: new Types.ObjectId(req.user.id), status: { $in: ['active', 'invited'] } } } }
+      ]
     });
 
     if (!business) {
@@ -878,7 +900,11 @@ export async function getBusinessByContentId(req: AuthRequest, res: Response, ne
     // Verify business belongs to user
     const business = await models.business.findOne({
       _id: content.business,
-      owner: req.user.id
+      $or: [
+        { owner: req.user.id },
+        { employees: new Types.ObjectId(req.user.id) },
+        { teamMembers: { $elemMatch: { user: new Types.ObjectId(req.user.id), status: { $in: ['active', 'invited'] } } } }
+      ]
     });
 
     if (!business) {
